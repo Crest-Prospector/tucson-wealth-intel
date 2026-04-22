@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tucson Wealth Intelligence | Market Platform</title>
+<meta name="description" content="Interactive wealth heat map for Tucson, AZ. Explore home prices, business revenue, and GDP by ZIP code.">
+
+<!-- Mapbox GL JS -->
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="root">
+
+  <!-- TOPBAR -->
+  <header id="topbar">
+    <div class="brand">
+      <div class="brand-icon">📍</div>
+      <div>
+        <div class="brand-name">TUCSON WEALTH INTEL</div>
+        <div class="brand-sub">Market Intelligence · Pima County AZ</div>
+      </div>
+    </div>
+
+    <div class="kpi-row" id="kpi-row">
+      <div class="kpi"><div class="kpi-dot" style="background:#ff3d6b"></div><div><div class="kpi-v">$7.2B</div><div class="kpi-l">Metro GDP</div></div></div>
+      <div class="kpi"><div class="kpi-dot" style="background:#3ddc84"></div><div><div class="kpi-v">24</div><div class="kpi-l">ZIP Zones</div></div></div>
+      <div class="kpi"><div class="kpi-dot" style="background:#00d4ff"></div><div><div class="kpi-v" id="avg-kpi">—</div><div class="kpi-l">Avg Score</div></div></div>
+      <div class="kpi"><div class="kpi-dot" style="background:#f5a623"></div><div><div class="kpi-v">$372K</div><div class="kpi-l">Avg Home</div></div></div>
+      <div class="kpi"><div class="kpi-dot" style="background:#a78bfa"></div><div><div class="kpi-v" id="top-zip-kpi">—</div><div class="kpi-l">Top ZIP</div></div></div>
+    </div>
+
+    <div class="tb-right">
+      <div class="mode-group" id="mode-group">
+        <button class="mode-btn on" data-mode="composite">Composite</button>
+        <button class="mode-btn" data-mode="homes">Homes</button>
+        <button class="mode-btn" data-mode="business">Business</button>
+        <button class="mode-btn" data-mode="gdp">GDP</button>
+      </div>
+      <button class="icon-btn active" id="labels-btn" title="Toggle Labels">Aa</button>
+      <button class="icon-btn" id="compare-btn" title="Compare ZIPs">⇌</button>
+    </div>
+  </header>
+
+  <!-- BODY -->
+  <div id="body">
+
+    <!-- SIDEBAR -->
+    <aside id="sidebar">
+      <div class="sb-head">
+        <div class="sb-title-row">
+          <div class="sb-title">ZIP Rankings</div>
+          <div class="sb-badge" id="sb-count">24 zones</div>
+        </div>
+        <div class="search-box">
+          <span class="search-icon">⌕</span>
+          <input class="search-input" id="search" placeholder="Search ZIP or neighborhood…" autocomplete="off">
+        </div>
+      </div>
+      <div class="tier-tabs">
+        <button class="tier-tab on" data-t="all">All</button>
+        <button class="tier-tab" data-t="high">High</button>
+        <button class="tier-tab" data-t="mid">Mid</button>
+        <button class="tier-tab" data-t="low">Low</button>
+      </div>
+      <div class="zip-scroll" id="zip-list"></div>
+    </aside>
+
+    <!-- MAP -->
+    <div id="map-wrap">
+      <div id="map"></div>
+
+      <!-- Mode overlay -->
+      <div id="legend">
+        <div class="leg-title" id="leg-title">Composite Wealth Score</div>
+        <div class="leg-gradient"></div>
+        <div class="leg-labels">
+          <span>Low</span><span>Medium</span><span>High</span>
+        </div>
+      </div>
+
+      <!-- Map controls -->
+      <div id="map-ctrl">
+        <button class="ctrl-btn" id="zoom-in">+</button>
+        <div class="ctrl-sep"></div>
+        <button class="ctrl-btn" id="zoom-out">−</button>
+        <div class="ctrl-sep"></div>
+        <button class="ctrl-btn" id="reset-view" title="Reset">⊙</button>
+      </div>
+
+      <!-- Style switcher -->
+      <div id="style-switcher">
+        <button class="style-btn active" data-style="dark">Dark</button>
+        <button class="style-btn" data-style="satellite">Satellite</button>
+        <button class="style-btn" data-style="streets">Streets</button>
+        <button class="style-btn" data-style="outdoors">Terrain</button>
+      </div>
+
+      <!-- Hover popup handled by Mapbox -->
+
+      <!-- DETAIL PANEL -->
+      <div id="detail-panel">
+        <div class="det-head">
+          <div class="det-head-left">
+            <div class="det-zip" id="det-zip"></div>
+            <div class="det-name" id="det-name"></div>
+          </div>
+          <button class="det-close" id="det-close">✕</button>
+        </div>
+
+        <div class="det-score-row">
+          <div class="score-ring-wrap">
+            <svg class="score-ring-svg" viewBox="0 0 64 64">
+              <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="5"/>
+              <circle id="score-arc" cx="32" cy="32" r="26" fill="none" stroke-width="5"
+                stroke-linecap="round" stroke-dasharray="163.4" stroke-dashoffset="163.4"
+                transform="rotate(-90 32 32)"/>
+            </svg>
+            <div class="score-ring-num" id="det-score-num"></div>
+          </div>
+          <div class="det-score-meta">
+            <div class="score-tier-lbl">Wealth Score</div>
+            <div class="score-tier-name" id="det-tier-name"></div>
+            <div class="score-rank" id="det-rank"></div>
+          </div>
+        </div>
+
+        <div class="det-body" id="det-body">
+          <!-- metrics, breakdown, tags, opp, insight injected by JS -->
+        </div>
+      </div>
+
+      <!-- COMPARE BAR -->
+      <div id="compare-bar">
+        <span class="cmp-label">COMPARE</span>
+        <div class="cmp-slots">
+          <div class="cmp-slot" id="cmp-slot-a">Slot A</div>
+          <div class="cmp-vs">VS</div>
+          <div class="cmp-slot" id="cmp-slot-b">Slot B</div>
+        </div>
+        <button class="cmp-run" id="cmp-run" disabled>Run Analysis →</button>
+        <button class="cmp-clear" id="cmp-clear">Clear</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- COMPARE MODAL -->
+<div id="cmp-modal" class="modal-overlay">
+  <div class="modal-box" id="cmp-modal-box"></div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
