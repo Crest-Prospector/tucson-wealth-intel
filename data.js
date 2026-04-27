@@ -541,3 +541,4 @@ function calcScore(zip, mode) {
     default: return Math.round(h * 0.28 + i * 0.26 + b * 0.24 + p * 0.22);
   }
 }
+
