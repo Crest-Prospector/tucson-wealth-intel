@@ -82,6 +82,7 @@ async function initMap() {
     if (boundaries) addLayers(boundaries);
     buildSidebar();
     updateKPIs();
+    initZoomDrill();
     setLoadProgress(100, 'Ready');
     setTimeout(hideLoading, 400);
   });
@@ -91,6 +92,7 @@ async function initMap() {
       window._map = map;
       window._geoData = geoData;
       if (geoData && !map.getSource('twi-zips')) addLayers(geoData);
+      if (!zoomDrillActive) initZoomDrill();
     }, 200);
   });
 }
@@ -556,6 +558,236 @@ function toggle3D() {
 
 let toastT;
 function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('show'),2600);}
+
+
+// ── ZOOM-TRIGGERED DRILL-DOWN ─────────────────────────────────────────────────
+// When user zooms in past threshold and one ZIP dominates the view,
+// automatically switch from wealth heatmap to live street/business view
+
+const DRILL_ZOOM_THRESHOLD = 13.5; // Zoom level that triggers street view
+let zoomDrillActive = false;
+let zoomDrillZip = null;
+let zoomDrillFetched = new Set(); // Track which ZIPs we've already loaded
+let zoomCheckTimeout = null;
+
+function initZoomDrill() {
+  map.on('zoomend', onZoomChange);
+  map.on('moveend', onZoomChange);
+}
+
+function onZoomChange() {
+  clearTimeout(zoomCheckTimeout);
+  zoomCheckTimeout = setTimeout(checkZoomDrill, 300);
+}
+
+function checkZoomDrill() {
+  const zoom = map.getZoom();
+
+  // If below threshold, exit drill mode if active
+  if (zoom < DRILL_ZOOM_THRESHOLD) {
+    if (zoomDrillActive) exitZoomDrill();
+    return;
+  }
+
+  // Above threshold — find which ZIP is dominating the viewport
+  const canvas = map.getCanvas();
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+
+  // Sample center + corners to find dominant ZIP
+  const samplePoints = [
+    [cx, cy],
+    [cx - 80, cy], [cx + 80, cy],
+    [cx, cy - 80], [cx, cy + 80]
+  ];
+
+  const zipCounts = {};
+  samplePoints.forEach(pt => {
+    const features = map.queryRenderedFeatures(pt, { layers: ['twi-fill'] });
+    if (features.length) {
+      const zip = features[0].properties.zip;
+      zipCounts[zip] = (zipCounts[zip] || 0) + 1;
+    }
+  });
+
+  // Find ZIP that dominates (appears in 3+ of 5 sample points)
+  const dominant = Object.entries(zipCounts).find(([z, c]) => c >= 3);
+  if (!dominant) return;
+
+  const [dominantZip] = dominant;
+
+  // Already in drill mode for this ZIP — no need to reload
+  if (zoomDrillActive && zoomDrillZip === dominantZip) return;
+
+  // Enter drill mode for this ZIP
+  enterZoomDrill(dominantZip);
+}
+
+async function enterZoomDrill(zip) {
+  zoomDrillActive = true;
+  zoomDrillZip = zip;
+  const d = ZIP_DATA[zip]; if (!d) return;
+
+  // Show badge
+  const badge = document.getElementById('zoom-mode-badge');
+  const zbZip  = document.getElementById('zb-zip');
+  if (badge) {
+    badge.classList.remove('hidden');
+    zbZip.textContent = `${zip} · ${d.name}`;
+  }
+
+  // Fade out the wealth layers — switch to satellite/streets for street context
+  if (map.getLayer('twi-extrusion')) map.setPaintProperty('twi-extrusion', 'fill-extrusion-opacity', 0.15);
+  if (map.getLayer('twi-fill'))      map.setPaintProperty('twi-fill', 'fill-opacity', 0.08);
+  if (map.getLayer('twi-border'))    map.setPaintProperty('twi-border', 'line-opacity', 0.3);
+
+  // Switch to streets style for better street-level context
+  const currentStyle = map.getStyle().name || '';
+  if (!currentStyle.includes('Streets') && !currentStyle.includes('Satellite')) {
+    map.setStyle(MAP_STYLES.streets);
+  }
+
+  // Load businesses if not already fetched for this ZIP
+  if (!zoomDrillFetched.has(zip)) {
+    zoomDrillFetched.add(zip);
+    // Use drill.js fetchBusinesses function
+    if (typeof fetchBusinesses === 'function') {
+      const businesses = await fetchBusinesses(zip);
+      if (businesses && businesses.length > 0) {
+        renderZoomDrillLayer(businesses, zip);
+      }
+    }
+  } else {
+    // Already loaded — just make layers visible
+    if (map.getLayer('zoom-heat'))   map.setLayoutProperty('zoom-heat',   'visibility', 'visible');
+    if (map.getLayer('zoom-dots'))   map.setLayoutProperty('zoom-dots',   'visibility', 'visible');
+    if (map.getLayer('zoom-labels')) map.setLayoutProperty('zoom-labels', 'visibility', 'visible');
+  }
+}
+
+function renderZoomDrillLayer(businesses, zip) {
+  // Remove old zoom drill layers
+  ['zoom-heat','zoom-dots','zoom-labels'].forEach(id => {
+    if (map.getLayer(id)) map.removeLayer(id);
+  });
+  if (map.getSource('zoom-biz')) map.removeSource('zoom-biz');
+
+  if (!businesses.length) return;
+
+  const geojson = {
+    type: 'FeatureCollection',
+    features: businesses.map(b => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [b.lng, b.lat] },
+      properties: {
+        name:    b.name,
+        type:    b.type,
+        group:   b.cat.group,
+        weight:  b.cat.weight,
+        color:   b.cat.color,
+        icon:    b.cat.icon,
+        label:   b.cat.label,
+        address: b.address || '',
+        phone:   b.phone   || '',
+        hours:   b.opening || ''
+      }
+    }))
+  };
+
+  map.addSource('zoom-biz', { type: 'geojson', data: geojson });
+
+  // Heatmap — revenue/density heat
+  map.addLayer({
+    id: 'zoom-heat', type: 'heatmap', source: 'zoom-biz',
+    paint: {
+      'heatmap-weight':     ['interpolate',['linear'],['get','weight'], 1,0.2, 5,0.6, 10,1.0],
+      'heatmap-intensity':  ['interpolate',['linear'],['zoom'], 13,1, 15,2.5, 17,4],
+      'heatmap-color': [
+        'interpolate',['linear'],['heatmap-density'],
+        0,   'rgba(0,0,0,0)',
+        0.1, 'rgba(8,40,100,0.5)',
+        0.3, 'rgba(14,120,130,0.65)',
+        0.5, 'rgba(40,200,100,0.75)',
+        0.7, 'rgba(220,180,20,0.85)',
+        0.85,'rgba(240,100,30,0.9)',
+        1.0, 'rgba(220,20,60,0.95)'
+      ],
+      'heatmap-radius':   ['interpolate',['linear'],['zoom'], 13,25, 15,35, 17,20],
+      'heatmap-opacity':  ['interpolate',['linear'],['zoom'], 14,0.85, 16,0.4]
+    }
+  });
+
+  // Individual business dots
+  map.addLayer({
+    id: 'zoom-dots', type: 'circle', source: 'zoom-biz',
+    minzoom: 14,
+    paint: {
+      'circle-radius':        ['interpolate',['linear'],['zoom'], 14,4, 16,9, 18,14],
+      'circle-color':         ['get','color'],
+      'circle-opacity':       ['interpolate',['linear'],['zoom'], 14,0.4, 15,0.9],
+      'circle-stroke-color':  '#fff',
+      'circle-stroke-width':  1.5,
+      'circle-stroke-opacity':['interpolate',['linear'],['zoom'], 14,0, 15,0.85]
+    }
+  });
+
+  // Business labels (zoom 15.5+)
+  map.addLayer({
+    id: 'zoom-labels', type: 'symbol', source: 'zoom-biz',
+    minzoom: 15.5,
+    layout: {
+      'text-field': ['concat', ['get','icon'], ' ', ['get','name']],
+      'text-font':  ['DIN Pro Regular','Arial Unicode MS Regular'],
+      'text-size':  ['interpolate',['linear'],['zoom'], 15.5,10, 17,13],
+      'text-anchor':'top',
+      'text-offset':[0, 0.9],
+      'text-allow-overlap': false,
+      'text-max-width': 10
+    },
+    paint: {
+      'text-color':      '#fff',
+      'text-halo-color': 'rgba(0,0,0,0.88)',
+      'text-halo-width': 2
+    }
+  });
+
+  // Click individual business dots for detail popup
+  map.on('click','zoom-dots', e => {
+    if (!e.features.length) return;
+    const p = e.features[0].properties;
+    const pop = new mapboxgl.Popup({ closeButton:true, className:'street-popup', maxWidth:'220px', offset:12 });
+    pop.setLngLat(e.lngLat).setHTML(`
+      <div class="sp-name">${p.icon} ${p.name}</div>
+      <div class="sp-cat">${p.label}</div>
+      ${p.address ? `<div class="sp-row"><span>Address</span><b>${p.address}</b></div>` : ''}
+      ${p.phone   ? `<div class="sp-row"><span>Phone</span><b>${p.phone}</b></div>`   : ''}
+      ${p.hours   ? `<div class="sp-row"><span>Hours</span><b>${p.hours.substring(0,35)}</b></div>` : ''}
+      <div class="sp-row"><span>Revenue Weight</span><b>${'★'.repeat(Math.min(Math.ceil(p.weight/2),5))}</b></div>
+    `).addTo(map);
+  });
+
+  map.on('mouseenter','zoom-dots', () => map.getCanvas().style.cursor = 'pointer');
+  map.on('mouseleave','zoom-dots', () => map.getCanvas().style.cursor = '');
+}
+
+function exitZoomDrill() {
+  zoomDrillActive = false;
+  zoomDrillZip    = null;
+
+  // Hide badge
+  const badge = document.getElementById('zoom-mode-badge');
+  if (badge) badge.classList.add('hidden');
+
+  // Restore wealth layers
+  if (map.getLayer('twi-extrusion')) map.setPaintProperty('twi-extrusion','fill-extrusion-opacity', 0.78);
+  if (map.getLayer('twi-fill'))      map.setPaintProperty('twi-fill','fill-opacity',['case',['boolean',['feature-state','hover'],false],0.88,USE_3D?0.35:0.68]);
+  if (map.getLayer('twi-border'))    map.setPaintProperty('twi-border','line-opacity', 0.9);
+
+  // Restore dark style
+  map.setStyle(MAP_STYLES.dark);
+
+  // Zoom back out to metro view
+  map.flyTo({ center:[-110.95,32.26], zoom:10.8, pitch:USE_3D?45:0, bearing:USE_3D?-15:0, duration:1000 });
+}
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
