@@ -45,13 +45,15 @@ function fmtPct(n) { return n!=null?n.toFixed(1)+'%':'—'; }
 
 // ── LOADING PROGRESS ──────────────────────────────────────────────────────────
 function setLoadProgress(pct, msg) {
-  document.getElementById('load-bar').style.width = pct + '%';
-  document.getElementById('loading-status').textContent = msg;
+  const bar = document.getElementById('load-bar');
+  const status = document.getElementById('loading-status');
+  if (bar) bar.style.width = pct + '%';
+  if (status) status.textContent = msg;
 }
 
 // ── MAP INIT ──────────────────────────────────────────────────────────────────
 async function initMap() {
-  setLoadProgress(15, 'Connecting to Mapbox…');
+  setLoadProgress(20, 'Initializing map engine…');
 
   window._map = map = new mapboxgl.Map({
     container: 'map',
@@ -72,11 +74,11 @@ async function initMap() {
     className: 'twi-popup', maxWidth: '260px', offset: 16
   });
 
-  setLoadProgress(35, 'Loading Census TIGER/Line boundaries…');
+  setLoadProgress(40, 'Loading Census boundaries…');
   const boundaries = await loadBoundaries();
 
   map.on('load', () => {
-    setLoadProgress(75, 'Rendering wealth zones…');
+    setLoadProgress(80, 'Rendering wealth zones…');
     if (boundaries) addLayers(boundaries);
     buildSidebar();
     updateKPIs();
@@ -94,34 +96,53 @@ async function initMap() {
 }
 
 async function loadBoundaries() {
+  const CACHE_KEY = 'twi_az_geo_v3';
   try {
-    const resp = await fetch(GEO_URL);
-    const all  = await resp.json();
-    setLoadProgress(60, `Processing ${all.features.length} Arizona ZIP codes…`);
+    // Check sessionStorage cache first — skips the 350KB download on reload
+    let rawFeatures = null;
+    try {
+      const cached = sessionStorage.getItem(CACHE_KEY);
+      if (cached) {
+        rawFeatures = JSON.parse(cached);
+        setLoadProgress(60, `Using cached boundaries (${rawFeatures.length} zones)…`);
+      }
+    } catch(e) { /* sessionStorage unavailable */ }
 
-    const features = all.features
-      .filter(f => TARGET.has(f.properties.ZCTA5CE10))
-      .map(f => {
-        const zip = f.properties.ZCTA5CE10;
-        const d   = ZIP_DATA[zip];
-        return {
-          ...f, id: zip,
-          properties: {
-            ...f.properties, zip,
-            name: d ? d.name : zip,
-            score: calcScore(zip, MODE),
-            medianHome:   d ? d.medianHome : 0,
-            medianIncome: d ? d.medianIncome : 0,
-            bizIndex:     d ? d.bizIndex : 0
-          }
-        };
-      });
+    if (!rawFeatures) {
+      setLoadProgress(45, 'Downloading Census TIGER/Line boundaries…');
+      const resp = await fetch(GEO_URL);
+      const all  = await resp.json();
+      setLoadProgress(55, `Processing ${all.features.length} Arizona zones…`);
+
+      // Store only the Tucson subset for fast future loads
+      const tucsonFeatures = all.features.filter(f => TARGET.has(f.properties.ZCTA5CE10));
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify(tucsonFeatures));
+      } catch(e) { /* storage full, no problem */ }
+      rawFeatures = tucsonFeatures;
+    }
+
+    const features = rawFeatures.map(f => {
+      const zip = f.properties.ZCTA5CE10 || f.properties.zip;
+      const d   = ZIP_DATA[zip];
+      return {
+        ...f, id: zip,
+        properties: {
+          ...f.properties, zip,
+          name: d ? d.name : zip,
+          score: calcScore(zip, MODE),
+          medianHome:   d ? d.medianHome : 0,
+          medianIncome: d ? d.medianIncome : 0,
+          bizIndex:     d ? d.bizIndex : 0
+        }
+      };
+    });
 
     geoData = window._geoData = { type: 'FeatureCollection', features };
     return geoData;
   } catch (err) {
     console.error('GeoJSON load failed:', err);
-    document.getElementById('loading-status').textContent = 'Error loading boundaries';
+    document.getElementById('loading-status').textContent = 'Error loading — check console';
     return null;
   }
 }
