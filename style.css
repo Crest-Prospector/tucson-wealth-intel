@@ -417,3 +417,101 @@ html,body { height:100%; overflow:hidden; background:var(--bg); color:var(--text
   font-family:var(--mono); font-size:11px; color:var(--muted);
   letter-spacing:1.5px; text-transform:uppercase;
 }
+
+/* ── DRILL-DOWN PANEL ── */
+#drill-panel {
+  position:absolute; right:0; top:0; bottom:0; width:340px; z-index:201;
+  background:var(--s1); border-left:1px solid var(--bd);
+  transform:translateX(100%); transition:transform .32s cubic-bezier(.16,1,.3,1);
+  display:flex; flex-direction:column; overflow:hidden;
+  box-shadow:-10px 0 40px rgba(0,0,0,.5);
+}
+#drill-panel.open { transform:translateX(0); }
+
+/* When both detail AND drill are open, push detail left */
+#detail.open + * #drill-panel.open,
+#detail.with-drill { width: 340px; }
+
+.drill-hd {
+  padding:14px 18px 12px; border-bottom:1px solid var(--bd); flex-shrink:0;
+  display:flex; align-items:flex-start; justify-content:space-between;
+  background:linear-gradient(135deg,rgba(0,212,255,.06),transparent);
+}
+.drill-hd-zip  { font-family:var(--disp); font-size:28px; font-weight:800; color:#fff; line-height:1; }
+.drill-hd-name { font-size:11px; color:var(--mid); margin-top:2px; }
+.drill-status  { font-family:var(--mono); font-size:9px; color:var(--cyan); letter-spacing:1px; margin-top:4px; }
+
+.drill-stats-row {
+  display:flex; padding:10px 14px; gap:8px; border-bottom:1px solid var(--bd); flex-shrink:0;
+}
+.ds-item { flex:1; background:rgba(255,255,255,.025); border:1px solid var(--bd); border-radius:7px; padding:7px 8px; text-align:center; }
+.ds-val  { font-family:var(--disp); font-size:15px; font-weight:700; color:#fff; line-height:1; }
+.ds-lbl  { font-size:8px; color:var(--muted); margin-top:2px; letter-spacing:.3px; }
+
+.drill-filters {
+  display:flex; flex-wrap:wrap; gap:4px; padding:8px 14px;
+  border-bottom:1px solid var(--bd); flex-shrink:0;
+}
+.df-btn {
+  padding:3px 9px; border-radius:20px; border:1px solid var(--bd);
+  background:transparent; color:var(--muted); font-family:var(--mono);
+  font-size:8.5px; letter-spacing:.5px; cursor:pointer; transition:all .15s;
+}
+.df-btn.on { background:rgba(0,212,255,.12); border-color:rgba(0,212,255,.4); color:var(--cyan); }
+.df-btn:hover:not(.on) { border-color:var(--bd2); color:var(--text); }
+
+.drill-legend {
+  padding:8px 14px; border-bottom:1px solid var(--bd); flex-shrink:0;
+  display:flex; align-items:center; gap:8px;
+}
+.dl-title { font-family:var(--mono); font-size:8px; color:var(--muted); letter-spacing:1.5px; flex-shrink:0; }
+.dl-bar   { flex:1; height:5px; border-radius:3px; background:linear-gradient(90deg,rgba(10,50,120,.6),rgba(20,130,120,.75),rgba(60,200,100,.85),rgba(230,175,20,.9),rgba(220,20,60,.95)); }
+.dl-labels { display:flex; justify-content:space-between; width:48px; flex-shrink:0; }
+.dl-labels span { font-family:var(--mono); font-size:7px; color:var(--muted); }
+
+.drill-count-row {
+  padding:6px 14px; border-bottom:1px solid var(--bd); flex-shrink:0;
+  font-family:var(--mono); font-size:9px;
+}
+.drill-count  { color:#fff; font-weight:500; }
+.osm-credit   { color:var(--muted); font-size:8px; }
+
+.drill-biz-list { flex:1; overflow-y:auto; padding:6px; }
+.drill-biz-list::-webkit-scrollbar { width:2px; }
+.drill-biz-list::-webkit-scrollbar-thumb { background:rgba(255,255,255,.06); }
+
+.drill-group { margin-bottom:8px; }
+.drill-group-head {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:5px 8px; font-family:var(--mono); font-size:9px; letter-spacing:1px;
+  color:var(--mid); text-transform:uppercase; border-bottom:1px solid var(--bd);
+  margin-bottom:3px;
+}
+.drill-group-count {
+  background:rgba(255,255,255,.06); border-radius:10px;
+  padding:1px 7px; font-size:8px; color:var(--muted);
+}
+.drill-biz-item {
+  display:flex; align-items:center; gap:8px; padding:6px 8px;
+  border-radius:6px; cursor:pointer; transition:all .12s;
+  border:1px solid transparent;
+}
+.drill-biz-item:hover { background:rgba(255,255,255,.035); border-color:var(--bd); }
+.dbi-dot  { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.dbi-info { flex:1; min-width:0; }
+.dbi-name { font-size:11px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dbi-addr { font-size:9px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+.dbi-weight { font-size:11px; flex-shrink:0; letter-spacing:-2px; }
+.drill-more { font-family:var(--mono); font-size:9px; color:var(--muted); text-align:center; padding:4px; }
+
+/* Drill trigger button on detail panel */
+.drill-trigger {
+  display:flex; align-items:center; gap:5px;
+  padding:5px 11px; border-radius:6px;
+  background:rgba(0,212,255,.1); border:1px solid rgba(0,212,255,.35);
+  color:var(--cyan); font-family:var(--mono); font-size:8.5px;
+  letter-spacing:1px; text-transform:uppercase; cursor:pointer;
+  transition:all .15s; white-space:nowrap;
+}
+.drill-trigger:hover { background:rgba(0,212,255,.18); }
+.drill-trigger.active { background:rgba(0,212,255,.22); }
