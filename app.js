@@ -584,6 +584,52 @@ let drillTimer = null, drillClicksReady = false;
 function initZoomDrill() {
   map.on('zoomend', () => { clearTimeout(drillTimer); drillTimer = setTimeout(checkDrill, 300); });
   map.on('moveend', () => { clearTimeout(drillTimer); drillTimer = setTimeout(checkDrill, 200); });
+
+  // Register drill-dots interactions ONCE here.
+  // These work even after the layer is removed/re-added because Mapbox
+  // re-fires events when a layer with the same id is re-added to the same source.
+  const hoverPop = new mapboxgl.Popup({
+    closeButton: false, closeOnClick: false,
+    className: 'hover-popup', maxWidth: '220px', offset: 12
+  });
+
+  map.on('mouseenter', 'drill-dots', e => {
+    if (!drillActive || !e.features.length) return;
+    map.getCanvas().style.cursor = 'pointer';
+    const p   = e.features[0].properties;
+    const clr = rwColor(p.weight);
+    const stars = rwStars(p.weight);
+    hoverPop.setLngLat(e.features[0].geometry.coordinates).setHTML(`
+      <div class="hp-icon-name">
+        <span class="hp-icon">${p.icon}</span>
+        <div>
+          <div class="hp-name">${p.name}</div>
+          <div class="hp-cat">${p.label}</div>
+        </div>
+      </div>
+      <div class="hp-stars" style="color:${clr}">${stars}</div>
+      <div class="hp-rev" style="color:${clr}">Revenue Index: ${p.weight}/10</div>
+      ${p.address ? `<div class="hp-addr">📍 ${p.address}</div>` : ''}
+      ${p.phone   ? `<div class="hp-addr">📞 ${p.phone}</div>`   : ''}
+      ${p.hours   ? `<div class="hp-addr">🕐 ${p.hours.substring(0,45)}</div>` : ''}
+      <div class="hp-hint">Click for full details & photo →</div>
+    `).addTo(map);
+  });
+
+  map.on('mouseleave', 'drill-dots', () => {
+    map.getCanvas().style.cursor = '';
+    hoverPop.remove();
+  });
+
+  // THE KEY FIX: click registered once here, never removed, always works
+  map.on('click', 'drill-dots', e => {
+    if (!drillActive || !e.features.length) return;
+    e.originalEvent.stopPropagation(); // prevent bubbling to map click handler
+    hoverPop.remove();
+    const p = e.features[0].properties;
+    const coords = e.features[0].geometry.coordinates;
+    openBizDetail(p, coords[1], coords[0]);
+  });
 }
 
 function checkDrill() {
@@ -759,52 +805,7 @@ function paintDrill(businesses) {
     paint:{ 'text-color':'#fff','text-halo-color':'rgba(0,0,0,0.92)','text-halo-width':2.2 }
   });
 
-  // ── HOVER: show quick tooltip ──────────────────────────────────────────────
-  if (!drillClicksReady) {
-    drillClicksReady = true;
-
-    const hoverPopup = new mapboxgl.Popup({
-      closeButton: false, closeOnClick: false,
-      className: 'hover-popup', maxWidth: '220px', offset: 12
-    });
-
-    map.on('mouseenter', 'drill-dots', e => {
-      map.getCanvas().style.cursor = 'pointer';
-      if (!e.features.length) return;
-      const p = e.features[0].properties;
-      const clr = rwColor(p.weight);
-      const stars = '★'.repeat(Math.min(Math.ceil(p.weight/2),5)) + '☆'.repeat(5-Math.min(Math.ceil(p.weight/2),5));
-      hoverPopup.setLngLat(e.features[0].geometry.coordinates).setHTML(`
-        <div class="hp-icon-name">
-          <span class="hp-icon">${p.icon}</span>
-          <div>
-            <div class="hp-name">${p.name}</div>
-            <div class="hp-cat">${p.label}</div>
-          </div>
-        </div>
-        <div class="hp-stars" style="color:${clr}">${stars}</div>
-        <div class="hp-rev" style="color:${clr}">Revenue Index: ${p.weight}/10</div>
-        ${p.address ? `<div class="hp-addr">📍 ${p.address}</div>` : ''}
-        ${p.phone   ? `<div class="hp-addr">📞 ${p.phone}</div>`   : ''}
-        ${p.hours   ? `<div class="hp-addr">🕐 ${p.hours.substring(0,45)}</div>` : ''}
-        <div class="hp-hint">Click for full details & photo →</div>
-      `).addTo(map);
-    });
-
-    map.on('mouseleave', 'drill-dots', () => {
-      map.getCanvas().style.cursor = '';
-      hoverPopup.remove();
-    });
-
-    // ── CLICK: open full business detail panel ──────────────────────────────
-    map.on('click', 'drill-dots', e => {
-      if (!e.features.length) return;
-      hoverPopup.remove();
-      const p = e.features[0].properties;
-      const [lng, lat] = e.features[0].geometry.coordinates;
-      openBizDetail(p, lat, lng);
-    });
-  }
+  // Interactions registered once in initZoomDrill() below
 }
 
 function rwColor(w){if(w>=9)return'#f03060';if(w>=7)return'#f07830';if(w>=5)return'#e8a020';if(w>=3)return'#28d88e';return'#00c8f0';}
