@@ -248,8 +248,12 @@ function addLayers(geo) {
     if(hov!==null){map.setFeatureState({source:'twi-zips',id:hov},{hover:false});hov=null;}
     popup.remove();
   });
-  map.on('click','twi-fill', e => { if(e.features.length){openDetail(e.features[0].properties.zip);popup.remove();} });
-  map.on('click', e => { const f=map.queryRenderedFeatures(e.point,{layers:['twi-fill']});if(!f.length)closeDetail(); });
+  map.on('click','twi-fill', e => { if(drillActive) return; if(e.features.length){openDetail(e.features[0].properties.zip);popup.remove();} });
+  map.on('click', e => {
+    if (drillActive) return; // don't interfere with business dot clicks during drill mode
+    const f = map.queryRenderedFeatures(e.point, { layers:['twi-fill'] });
+    if (!f.length) closeDetail();
+  });
 }
 
 function buildFillExpr() {
