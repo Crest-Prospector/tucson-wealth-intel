@@ -3,168 +3,267 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tucson Wealth Intelligence</title>
+<title>Crest Prospector — Tucson Market Intelligence</title>
+<meta name="description" content="Professional market intelligence platform for Tucson, AZ. ZIP-level wealth analytics, business density mapping, and investment targeting.">
+
+<!-- Mapbox -->
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet">
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+
+<!-- Fonts: Clash Display (sharp/editorial) + Geist Mono (precise/data) + Satoshi (clean body) -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
+<!-- LOADING -->
 <div id="loading">
-  <div class="loader-ring"></div>
-  <div id="loading-status">Loading Census TIGER/Line boundaries…</div>
+  <div class="load-inner">
+    <svg class="load-logo" viewBox="0 0 48 48" fill="none">
+      <rect x="4" y="4" width="18" height="18" rx="3" fill="#00d4ff" opacity="0.9"/>
+      <rect x="26" y="4" width="18" height="18" rx="3" fill="#00d4ff" opacity="0.5"/>
+      <rect x="4" y="26" width="18" height="18" rx="3" fill="#00d4ff" opacity="0.5"/>
+      <rect x="26" y="26" width="18" height="18" rx="3" fill="#00d4ff" opacity="0.2"/>
+    </svg>
+    <div class="load-brand">CREST PROSPECTOR</div>
+    <div class="load-bar-wrap"><div class="load-bar" id="load-bar"></div></div>
+    <div class="load-status" id="loading-status">Initializing platform…</div>
+  </div>
 </div>
 
 <div id="root">
+
+  <!-- ── TOPBAR ── -->
   <header id="topbar">
-    <div class="brand"><div class="brand-icon">📍</div><div><div class="brand-name">TUCSON WEALTH INTEL</div><div class="brand-sub">Census TIGER · OSM Business Data · ACS 2023 · Redfin 2026</div></div></div>
-    <div class="kpi-strip">
-      <div class="kpi-item"><div class="kpi-val" id="kpi-avg">—</div><div class="kpi-lbl">Avg Score</div></div>
-      <div class="kpi-sep"></div>
-      <div class="kpi-item"><div class="kpi-val" id="kpi-top">—</div><div class="kpi-lbl">Top ZIP</div></div>
-      <div class="kpi-sep"></div>
-      <div class="kpi-item"><div class="kpi-val">$332K</div><div class="kpi-lbl">Metro Med.</div></div>
-      <div class="kpi-sep"></div>
-      <div class="kpi-item"><div class="kpi-val">$57K</div><div class="kpi-lbl">Med. Inc.</div></div>
-      <div class="kpi-sep"></div>
-      <div class="kpi-item"><div class="kpi-val" id="kpi-zones">—</div><div class="kpi-lbl">ZIPs</div></div>
-    </div>
-    <div class="tb-controls">
-      <div class="mode-group" id="mode-group">
-        <button class="mode-btn on" data-mode="composite">Composite</button>
-        <button class="mode-btn" data-mode="homes">Homes</button>
-        <button class="mode-btn" data-mode="income">Income</button>
-        <button class="mode-btn" data-mode="business">Business</button>
-        <button class="mode-btn" data-mode="growth">Growth</button>
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 36 36" fill="none">
+        <rect x="2" y="2" width="14" height="14" rx="2.5" fill="#00d4ff"/>
+        <rect x="20" y="2" width="14" height="14" rx="2.5" fill="#00d4ff" opacity="0.5"/>
+        <rect x="2" y="20" width="14" height="14" rx="2.5" fill="#00d4ff" opacity="0.5"/>
+        <rect x="20" y="20" width="14" height="14" rx="2.5" fill="#00d4ff" opacity="0.2"/>
+      </svg>
+      <div class="brand-text">
+        <div class="brand-name">CREST PROSPECTOR</div>
+        <div class="brand-tagline">Tucson Market Intelligence · Pima County, AZ</div>
       </div>
-      <button class="icon-btn on" id="labels-btn" title="Labels">Aa</button>
-      <button class="icon-btn on" id="threed-btn" title="3D View">3D</button>
-      <button class="icon-btn" id="compare-btn" title="Compare">⇌</button>
+    </div>
+
+    <div class="top-metrics" id="top-metrics">
+      <div class="tm-item">
+        <div class="tm-val" id="kpi-avg">—</div>
+        <div class="tm-lbl">Market Score</div>
+      </div>
+      <div class="tm-divider"></div>
+      <div class="tm-item">
+        <div class="tm-val" id="kpi-top">—</div>
+        <div class="tm-lbl">Top ZIP</div>
+      </div>
+      <div class="tm-divider"></div>
+      <div class="tm-item">
+        <div class="tm-val">$332K</div>
+        <div class="tm-lbl">Metro Median</div>
+      </div>
+      <div class="tm-divider"></div>
+      <div class="tm-item">
+        <div class="tm-val">$57K</div>
+        <div class="tm-lbl">Metro Income</div>
+      </div>
+      <div class="tm-divider"></div>
+      <div class="tm-item">
+        <div class="tm-val" id="kpi-zones">—</div>
+        <div class="tm-lbl">Zones Tracked</div>
+      </div>
+    </div>
+
+    <div class="top-right">
+      <!-- Layer mode selector -->
+      <div class="layer-tabs" id="mode-group">
+        <button class="ltab on" data-mode="composite">
+          <span class="ltab-icon">◈</span>
+          <span class="ltab-label">Composite</span>
+        </button>
+        <button class="ltab" data-mode="homes">
+          <span class="ltab-icon">⌂</span>
+          <span class="ltab-label">Homes</span>
+        </button>
+        <button class="ltab" data-mode="income">
+          <span class="ltab-icon">$</span>
+          <span class="ltab-label">Income</span>
+        </button>
+        <button class="ltab" data-mode="business">
+          <span class="ltab-icon">⬡</span>
+          <span class="ltab-label">Business</span>
+        </button>
+        <button class="ltab" data-mode="growth">
+          <span class="ltab-icon">↗</span>
+          <span class="ltab-label">Growth</span>
+        </button>
+      </div>
+      <div class="top-actions">
+        <button class="act-btn on" id="labels-btn" title="Toggle Labels">Aa</button>
+        <button class="act-btn on" id="threed-btn" title="Toggle 3D">3D</button>
+        <button class="act-btn" id="compare-btn" title="Compare ZIPs">⇌</button>
+      </div>
     </div>
   </header>
 
   <div id="body">
-    <aside id="sidebar">
-      <div class="sb-head">
-        <div class="sb-row"><span class="sb-title">ZIP Rankings</span><span class="sb-badge" id="sb-count">—</span></div>
-        <div class="search-wrap"><span class="si">⌕</span><input id="search" class="search-input" placeholder="Search ZIP or area…" autocomplete="off"></div>
+
+    <!-- ── LEFT PANEL ── -->
+    <aside id="left-panel">
+      <div class="lp-head">
+        <div class="lp-title">Market Rankings</div>
+        <div class="lp-count" id="sb-count">—</div>
       </div>
-      <div class="tier-row">
-        <button class="tier-btn on" data-t="all">All</button>
-        <button class="tier-btn" data-t="high">High</button>
-        <button class="tier-btn" data-t="mid">Mid</button>
-        <button class="tier-btn" data-t="low">Low</button>
+      <div class="lp-search">
+        <svg class="search-icon" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input id="search" class="search-input" placeholder="Search ZIP code or neighborhood…" autocomplete="off">
       </div>
-      <div class="zip-scroll" id="zip-list"></div>
+      <div class="lp-filters">
+        <button class="f-chip on" data-t="all">All Zones</button>
+        <button class="f-chip" data-t="high">High Value</button>
+        <button class="f-chip" data-t="mid">Mid Market</button>
+        <button class="f-chip" data-t="low">Emerging</button>
+      </div>
+      <div class="zip-list" id="zip-list"></div>
+      <div class="lp-footer">
+        <div class="lp-footer-item">ACS 2023 · Redfin Apr 2026</div>
+        <div class="lp-footer-item">Census TIGER/Line Boundaries</div>
+      </div>
     </aside>
 
+    <!-- ── MAP ── -->
     <div id="map-wrap">
       <div id="map"></div>
 
+      <!-- Style switcher -->
       <div id="style-bar">
-        <button class="sty-btn active" data-style="dark">Dark</button>
-        <button class="sty-btn" data-style="satellite">Satellite</button>
-        <button class="sty-btn" data-style="streets">Streets</button>
-        <button class="sty-btn" data-style="outdoors">Terrain</button>
+        <button class="sty active" data-style="dark">Dark</button>
+        <button class="sty" data-style="satellite">Satellite</button>
+        <button class="sty" data-style="streets">Streets</button>
+        <button class="sty" data-style="outdoors">Terrain</button>
       </div>
 
+      <!-- Legend -->
       <div id="legend">
-        <div class="leg-lbl" id="leg-title">Composite Wealth Score</div>
-        <div class="leg-bar"></div>
-        <div class="leg-ticks"><span>Low</span><span>Mid</span><span>High</span></div>
-        <div class="leg-source">Census TIGER/Line · ACS 2023 · Redfin · Zillow · OSM</div>
-      </div>
-
-      <div id="zoom-ctrl">
-        <button id="z-in" class="z-btn">+</button>
-        <div class="z-sep"></div>
-        <button id="z-out" class="z-btn">−</button>
-        <div class="z-sep"></div>
-        <button id="z-reset" class="z-btn">⊙</button>
-      </div>
-
-      <!-- WEALTH DETAIL PANEL -->
-      <div id="detail">
-        <div class="det-hd">
-          <div>
-            <div class="det-zip" id="det-zip"></div>
-            <div class="det-name" id="det-name"></div>
-            <div class="det-city" id="det-city"></div>
+        <div class="leg-mode" id="leg-title">Composite Wealth Score</div>
+        <div class="leg-scale">
+          <div class="leg-bar"></div>
+          <div class="leg-marks">
+            <span>Low</span><span>Medium</span><span>High</span>
           </div>
-          <div style="display:flex;gap:6px;align-items:flex-start">
-            <button class="drill-trigger" id="drill-btn" onclick="">
-              <span>🔍</span> Business Map
+        </div>
+        <div class="leg-src">Census TIGER · ACS 2023 · Redfin · Zillow · OpenStreetMap</div>
+      </div>
+
+      <!-- Zoom controls -->
+      <div id="map-zoom">
+        <button class="mz-btn" id="z-in">+</button>
+        <div class="mz-sep"></div>
+        <button class="mz-btn" id="z-out">−</button>
+        <div class="mz-sep"></div>
+        <button class="mz-btn" id="z-reset" title="Reset view">⊙</button>
+      </div>
+
+      <!-- ── WEALTH DETAIL PANEL ── -->
+      <div id="detail-panel">
+        <!-- Header -->
+        <div class="dp-header">
+          <div class="dp-header-left">
+            <div class="dp-zip" id="det-zip"></div>
+            <div class="dp-name" id="det-name"></div>
+            <div class="dp-location" id="det-city"></div>
+          </div>
+          <div class="dp-header-actions">
+            <button class="biz-btn" id="drill-btn">
+              <svg viewBox="0 0 16 16" fill="none" width="13" height="13"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M8 2V1M8 15v-1M2 8H1M15 8h-1M3.5 3.5l-.7-.7M13.2 13.2l-.7-.7M12.5 3.5l.7-.7M2.8 13.2l.7-.7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              Business Layer
             </button>
-            <button id="det-close" class="det-x">✕</button>
+            <button id="det-close" class="dp-close">
+              <svg viewBox="0 0 16 16" fill="none" width="12" height="12"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
           </div>
         </div>
-        <div class="det-score-row">
-          <div class="ring-wrap">
-            <svg viewBox="0 0 64 64" class="ring-svg">
-              <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="5"/>
-              <circle id="ring-arc" cx="32" cy="32" r="26" fill="none" stroke-width="5" stroke-linecap="round" stroke-dasharray="163.4" stroke-dashoffset="163.4" transform="rotate(-90 32 32)"/>
+
+        <!-- Score bar -->
+        <div class="dp-score-bar">
+          <div class="score-ring-wrap">
+            <svg viewBox="0 0 64 64" class="score-ring-svg">
+              <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="5"/>
+              <circle id="ring-arc" cx="32" cy="32" r="26" fill="none" stroke-width="5"
+                stroke-linecap="round" stroke-dasharray="163.4" stroke-dashoffset="163.4"
+                transform="rotate(-90 32 32)"/>
             </svg>
-            <div class="ring-num" id="ring-num"></div>
+            <div class="score-ring-num" id="ring-num"></div>
           </div>
-          <div class="det-score-meta">
-            <div class="dst-lbl">Wealth Score</div>
-            <div class="dst-tier" id="dst-tier"></div>
-            <div class="dst-rank" id="dst-rank"></div>
-            <div class="dst-opp" id="dst-opp"></div>
+          <div class="score-meta">
+            <div class="score-meta-label">Wealth Score</div>
+            <div class="score-tier" id="dst-tier"></div>
+            <div class="score-rank" id="dst-rank"></div>
+            <div class="score-opp" id="dst-opp"></div>
           </div>
         </div>
-        <div id="det-body"></div>
+
+        <!-- Scrollable body -->
+        <div class="dp-body" id="det-body"></div>
       </div>
 
-      <!-- BUSINESS DRILL-DOWN PANEL -->
+      <!-- ── BUSINESS DRILL PANEL ── -->
       <div id="drill-panel">
-        <div class="drill-hd">
+        <div class="drill-header">
           <div>
-            <div class="drill-hd-zip" id="drill-zip"></div>
-            <div class="drill-hd-name" id="drill-name"></div>
-            <div class="drill-status" id="drill-status">Loading…</div>
+            <div class="drill-label">BUSINESS INTELLIGENCE</div>
+            <div class="drill-zip" id="drill-zip"></div>
+            <div class="drill-name" id="drill-name"></div>
           </div>
-          <button class="det-x" onclick="exitDrillMode()">✕</button>
+          <button class="dp-close" onclick="exitDrillMode()">
+            <svg viewBox="0 0 16 16" fill="none" width="12" height="12"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
         </div>
-
-        <!-- Business Stats -->
-        <div id="drill-stats" class="drill-stats-row"></div>
-
-        <!-- Category Filters -->
+        <div class="drill-status-bar" id="drill-status">Querying OpenStreetMap…</div>
+        <div id="drill-stats" class="drill-stats"></div>
+        <div class="drill-section-title">Filter by Sector</div>
         <div id="drill-filters" class="drill-filters"></div>
-
-        <!-- Heatmap Legend -->
-        <div class="drill-legend">
-          <span class="dl-title">Revenue Density</span>
-          <div class="dl-bar"></div>
-          <div class="dl-labels"><span>Low</span><span>High</span></div>
+        <div class="drill-section-title">
+          <span>Revenue Density Layer</span>
+          <div class="drill-heat-legend">
+            <div class="dhl-bar"></div>
+            <span>Low → High</span>
+          </div>
         </div>
-
-        <!-- Business List -->
-        <div class="drill-count-row">
-          <span id="drill-count" class="drill-count">—</span> businesses · <span class="osm-credit">Data: OpenStreetMap</span>
+        <div class="drill-count-bar">
+          <span id="drill-count" class="dc-num">—</span>
+          <span class="dc-label">businesses found</span>
+          <span class="dc-source">via OpenStreetMap</span>
         </div>
-        <div id="drill-biz-list" class="drill-biz-list"></div>
+        <div id="drill-biz-list" class="drill-list"></div>
       </div>
 
-      <!-- COMPARE BAR -->
+      <!-- ── COMPARE BAR ── -->
       <div id="cmp-bar">
-        <span class="cmp-lbl">COMPARE</span>
-        <div class="cmp-slots">
-          <div class="cmp-slot" id="cmp-a">Slot A</div>
-          <div class="cmp-vs">VS</div>
-          <div class="cmp-slot" id="cmp-b">Slot B</div>
+        <div class="cmp-label-wrap">
+          <svg viewBox="0 0 16 16" fill="none" width="14"><path d="M3 8h10M10 5l3 3-3 3M6 5L3 8l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          COMPARE ZONES
         </div>
-        <button id="cmp-run" disabled>Analyze →</button>
+        <div class="cmp-slots">
+          <div class="cmp-slot" id="cmp-a">Select Zone A</div>
+          <div class="cmp-vs">VS</div>
+          <div class="cmp-slot" id="cmp-b">Select Zone B</div>
+        </div>
+        <button id="cmp-run" disabled>Run Analysis →</button>
         <button id="cmp-clear" class="cmp-clr">Clear</button>
       </div>
     </div>
   </div>
 </div>
 
-<div id="cmp-modal" class="modal-bg"><div class="modal-box" id="cmp-box"></div></div>
+<!-- Compare Modal -->
+<div id="cmp-modal" class="modal-overlay">
+  <div class="modal-container" id="cmp-box"></div>
+</div>
+
 <div id="toast"></div>
 
 <script src="data.js"></script>
