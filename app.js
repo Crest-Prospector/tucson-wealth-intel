@@ -219,6 +219,7 @@ function addLayers(geo) {
   // ── INTERACTIONS ──
   let hov = null;
   map.on('mousemove','twi-fill', e => {
+    if (drillActive) { map.getCanvas().style.cursor = ''; popup.remove(); return; }
     map.getCanvas().style.cursor = 'pointer';
     if (e.features.length) {
       if (hov!==null) map.setFeatureState({source:'twi-zips',id:hov},{hover:false});
@@ -242,6 +243,7 @@ function addLayers(geo) {
     }
   });
   map.on('mouseleave','twi-fill', () => {
+    if (drillActive) return;
     map.getCanvas().style.cursor = '';
     if(hov!==null){map.setFeatureState({source:'twi-zips',id:hov},{hover:false});hov=null;}
     popup.remove();
@@ -609,12 +611,18 @@ async function enterDrill(zip) {
   drillZip = zip;
   const d = ZIP_DATA[zip]; if (!d) return;
 
+  // Immediately kill the ZIP hover popup so it doesn't block dot interactions
+  if (popup) popup.remove();
+
   // Show badge
   const badge = document.getElementById('zoom-mode-badge');
   if (badge) {
     badge.classList.remove('hidden');
     document.getElementById('zb-zip').textContent = zip + ' · ' + d.name;
   }
+
+  // Remove any lingering ZIP hover popup
+  if (popup) popup.remove();
 
   // Fade out wealth heatmap — streets from dark-v11 show through naturally at zoom 13+
   if (map.getLayer('twi-extrusion')) map.setPaintProperty('twi-extrusion','fill-extrusion-opacity',0.03);
