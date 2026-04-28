@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════════════════════════
-   ZONA INTEL — Professional Market Intelligence Platform
+   TUCSON WEALTH MAP — Professional Market Intelligence Platform
    Design: Refined dark intelligence dashboard
    Fonts: Bebas Neue (display) + Space Grotesk (body) + Space Mono (data)
    ══════════════════════════════════════════════════════════════ */
@@ -179,10 +179,10 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   padding: 10px 12px; border-bottom: 1px solid var(--line); flex-shrink: 0;
   position: relative;
 }
-.search-icon { position: absolute; left: 21px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; font-size: 14px; line-height: 1; }
 .search-input {
   width: 100%; background: var(--bg-3); border: 1px solid var(--line);
-  border-radius: var(--r-sm); padding: 7px 10px 7px 30px;
+  border-radius: var(--r-sm); padding: 7px 10px 7px 26px;
   color: var(--text-1); font-family: var(--font-body); font-size: 12px;
   outline: none; transition: border-color 0.2s;
 }
@@ -667,3 +667,49 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   white-space: nowrap; box-shadow: 0 4px 24px rgba(0,0,0,0.6);
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+
+/* ── ZOOM DRILL BADGE ── */
+.zoom-badge {
+  position: absolute; top: 14px; right: 60px; z-index: 101;
+  background: rgba(8,11,16,0.96); border: 1px solid rgba(0,200,240,0.4);
+  border-radius: var(--r-lg); padding: 10px 14px;
+  display: flex; align-items: center; gap: 10px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,200,240,0.08);
+  backdrop-filter: blur(20px);
+  animation: slideIn .3s cubic-bezier(.16,1,.3,1);
+}
+.zoom-badge.hidden { display: none; }
+@keyframes slideIn { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+
+.zb-icon { font-size: 18px; flex-shrink: 0; }
+.zb-title { font-family: var(--font-display); font-size: 16px; letter-spacing: 0.5px; color: var(--cyan); line-height: 1; }
+.zb-sub   { font-family: var(--font-mono); font-size: 8px; color: var(--text-3); letter-spacing: 1px; text-transform: uppercase; margin-top: 2px; }
+.zb-exit {
+  padding: 5px 10px; border-radius: var(--r-sm);
+  border: 1px solid var(--line-2); background: var(--bg-3);
+  color: var(--text-2); font-family: var(--font-mono); font-size: 9px;
+  letter-spacing: 0.8px; cursor: pointer; transition: all .15s; white-space: nowrap;
+  flex-shrink: 0;
+}
+.zb-exit:hover { border-color: var(--cyan); color: var(--cyan); }
+
+/* ── ZOOM DRILL MODE — map goes street-level ── */
+#map.drill-mode .mapboxgl-canvas {
+  filter: brightness(0.92) contrast(1.05);
+}
+
+/* Street detail popup in drill mode */
+.street-popup .mapboxgl-popup-content {
+  background: rgba(8,11,16,0.97) !important;
+  border: 1px solid var(--line-3) !important;
+  border-radius: var(--r-md) !important;
+  padding: 10px 13px !important;
+  min-width: 160px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.7) !important;
+}
+.sp-name  { font-family: var(--font-display); font-size: 14px; letter-spacing: 0.3px; color: var(--text-1); line-height: 1; }
+.sp-cat   { font-size: 9px; color: var(--text-3); margin-top: 2px; margin-bottom: 6px; font-family: var(--font-mono); letter-spacing: 0.5px; }
+.sp-row   { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 3px; }
+.sp-row span { color: var(--text-3); }
+.sp-row b { color: var(--text-2); font-family: var(--font-mono); font-weight: 400; }
