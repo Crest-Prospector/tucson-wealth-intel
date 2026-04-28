@@ -92,7 +92,12 @@ async function initMap() {
       window._map = map;
       window._geoData = geoData;
       if (geoData && !map.getSource('twi-zips')) addLayers(geoData);
-      if (!zoomDrillActive) initZoomDrill();
+      initZoomDrill();
+      if (drillActive && drillZip && drillCache[drillZip]) setTimeout(()=>paintDrill(drillCache[drillZip]),300);
+      // If we were in drill mode, re-render after style change
+      if (zoomDrillActive && zoomDrillZip && zoomDrillCache[zoomDrillZip]) {
+        setTimeout(() => renderDrillLayers(zoomDrillCache[zoomDrillZip], zoomDrillZip), 400);
+      }
     }, 200);
   });
 }
@@ -140,7 +145,7 @@ async function loadBoundaries() {
       };
     });
 
-    geoData = window._geoData = { type: 'FeatureCollection', features };
+    geoData = { type: 'FeatureCollection', features }; window._geoData = geoData;
     return geoData;
   } catch (err) {
     console.error('GeoJSON load failed:', err);
@@ -561,233 +566,223 @@ function toast(msg){const el=document.getElementById('toast');el.textContent=msg
 
 
 // ── ZOOM-TRIGGERED DRILL-DOWN ─────────────────────────────────────────────────
-// When user zooms in past threshold and one ZIP dominates the view,
-// automatically switch from wealth heatmap to live street/business view
+// Auto-triggers when user zooms past 13.5 with one ZIP dominating the viewport.
+// Fades out wealth heatmap → overlays live OSM business revenue heat map.
+// Hot red streets = high revenue business clusters. Empty streets = transparent.
 
-const DRILL_ZOOM_THRESHOLD = 13.5; // Zoom level that triggers street view
-let zoomDrillActive = false;
-let zoomDrillZip = null;
-let zoomDrillFetched = new Set(); // Track which ZIPs we've already loaded
-let zoomCheckTimeout = null;
+const DRILL_ZOOM = 13.5;
+let drillActive = false, drillZip = null;
+const drillCache = {};       // zip → businesses (persists per session)
+let drillTimer = null, drillClicksReady = false;
 
 function initZoomDrill() {
-  map.on('zoomend', onZoomChange);
-  map.on('moveend', onZoomChange);
+  map.on('zoomend', () => { clearTimeout(drillTimer); drillTimer = setTimeout(checkDrill, 300); });
+  map.on('moveend', () => { clearTimeout(drillTimer); drillTimer = setTimeout(checkDrill, 200); });
 }
 
-function onZoomChange() {
-  clearTimeout(zoomCheckTimeout);
-  zoomCheckTimeout = setTimeout(checkZoomDrill, 300);
-}
-
-function checkZoomDrill() {
+function checkDrill() {
   const zoom = map.getZoom();
+  if (zoom < DRILL_ZOOM) { if (drillActive) leaveDrill(false); return; }
 
-  // If below threshold, exit drill mode if active
-  if (zoom < DRILL_ZOOM_THRESHOLD) {
-    if (zoomDrillActive) exitZoomDrill();
-    return;
-  }
+  // Sample 5 points across viewport — need 3+ on same ZIP to trigger
+  const W = map.getCanvas().clientWidth;
+  const H = map.getCanvas().clientHeight;
+  const hits = {};
+  [[W/2,H/2],[W*0.35,H*0.35],[W*0.65,H*0.35],[W*0.35,H*0.65],[W*0.65,H*0.65]]
+    .forEach(pt => {
+      const f = map.queryRenderedFeatures(pt, { layers:['twi-fill'] });
+      if (f.length && f[0].properties.zip) {
+        const z = f[0].properties.zip;
+        hits[z] = (hits[z]||0) + 1;
+      }
+    });
 
-  // Above threshold — find which ZIP is dominating the viewport
-  const canvas = map.getCanvas();
-  const cx = canvas.width / 2, cy = canvas.height / 2;
-
-  // Sample center + corners to find dominant ZIP
-  const samplePoints = [
-    [cx, cy],
-    [cx - 80, cy], [cx + 80, cy],
-    [cx, cy - 80], [cx, cy + 80]
-  ];
-
-  const zipCounts = {};
-  samplePoints.forEach(pt => {
-    const features = map.queryRenderedFeatures(pt, { layers: ['twi-fill'] });
-    if (features.length) {
-      const zip = features[0].properties.zip;
-      zipCounts[zip] = (zipCounts[zip] || 0) + 1;
-    }
-  });
-
-  // Find ZIP that dominates (appears in 3+ of 5 sample points)
-  const dominant = Object.entries(zipCounts).find(([z, c]) => c >= 3);
-  if (!dominant) return;
-
-  const [dominantZip] = dominant;
-
-  // Already in drill mode for this ZIP — no need to reload
-  if (zoomDrillActive && zoomDrillZip === dominantZip) return;
-
-  // Enter drill mode for this ZIP
-  enterZoomDrill(dominantZip);
+  const winner = Object.entries(hits).sort((a,b)=>b[1]-a[1])[0];
+  if (!winner || winner[1] < 3) return;
+  const [zip] = winner;
+  if (drillActive && drillZip === zip) return; // already showing this ZIP
+  enterDrill(zip);
 }
 
-async function enterZoomDrill(zip) {
-  zoomDrillActive = true;
-  zoomDrillZip = zip;
+async function enterDrill(zip) {
+  drillActive = true;
+  drillZip = zip;
   const d = ZIP_DATA[zip]; if (!d) return;
 
   // Show badge
   const badge = document.getElementById('zoom-mode-badge');
-  const zbZip  = document.getElementById('zb-zip');
   if (badge) {
     badge.classList.remove('hidden');
-    zbZip.textContent = `${zip} · ${d.name}`;
+    document.getElementById('zb-zip').textContent = zip + ' · ' + d.name;
   }
 
-  // Fade out the wealth layers — switch to satellite/streets for street context
-  if (map.getLayer('twi-extrusion')) map.setPaintProperty('twi-extrusion', 'fill-extrusion-opacity', 0.15);
-  if (map.getLayer('twi-fill'))      map.setPaintProperty('twi-fill', 'fill-opacity', 0.08);
-  if (map.getLayer('twi-border'))    map.setPaintProperty('twi-border', 'line-opacity', 0.3);
+  // Fade out wealth heatmap — streets from dark-v11 show through naturally at zoom 13+
+  if (map.getLayer('twi-extrusion')) map.setPaintProperty('twi-extrusion','fill-extrusion-opacity',0.03);
+  if (map.getLayer('twi-fill'))      map.setPaintProperty('twi-fill','fill-opacity',0.03);
+  if (map.getLayer('twi-border'))    map.setPaintProperty('twi-border','line-opacity',0.12);
+  if (map.getLayer('twi-labels'))    map.setLayoutProperty('twi-labels','visibility','none');
 
-  // Switch to streets style for better street-level context
-  const currentStyle = map.getStyle().name || '';
-  if (!currentStyle.includes('Streets') && !currentStyle.includes('Satellite')) {
-    map.setStyle(MAP_STYLES.streets);
+  // Update badge with loading state
+  const zbEl = document.getElementById('zb-zip');
+
+  // Use cache if we already fetched this ZIP
+  if (drillCache[zip]) {
+    paintDrill(drillCache[zip]);
+    if (zbEl) zbEl.textContent = zip + ' · ' + d.name + ' (' + drillCache[zip].length + ' businesses)';
+    return;
   }
 
-  // Load businesses if not already fetched for this ZIP
-  if (!zoomDrillFetched.has(zip)) {
-    zoomDrillFetched.add(zip);
-    // Use drill.js fetchBusinesses function
-    if (typeof fetchBusinesses === 'function') {
-      const businesses = await fetchBusinesses(zip);
-      if (businesses && businesses.length > 0) {
-        renderZoomDrillLayer(businesses, zip);
-      }
-    }
-  } else {
-    // Already loaded — just make layers visible
-    if (map.getLayer('zoom-heat'))   map.setLayoutProperty('zoom-heat',   'visibility', 'visible');
-    if (map.getLayer('zoom-dots'))   map.setLayoutProperty('zoom-dots',   'visibility', 'visible');
-    if (map.getLayer('zoom-labels')) map.setLayoutProperty('zoom-labels', 'visibility', 'visible');
+  if (zbEl) zbEl.textContent = zip + ' · Loading businesses…';
+
+  // Make sure geoData is available before fetching
+  // (drill.js uses window._geoData for the polygon bbox)
+  if (!window._geoData && geoData) window._geoData = geoData;
+
+  try {
+    const businesses = await fetchBusinesses(zip);
+    drillCache[zip] = businesses;
+    paintDrill(businesses);
+    if (zbEl) zbEl.textContent = zip + ' · ' + d.name + ' (' + businesses.length + ' businesses found)';
+  } catch(err) {
+    console.error('[Drill] fetch failed:', err);
+    drillCache[zip] = [];
+    if (zbEl) zbEl.textContent = zip + ' · Could not load data';
   }
 }
 
-function renderZoomDrillLayer(businesses, zip) {
-  // Remove old zoom drill layers
-  ['zoom-heat','zoom-dots','zoom-labels'].forEach(id => {
+function paintDrill(businesses) {
+  // Remove existing drill layers
+  ['drill-heat','drill-dots','drill-labels'].forEach(id => {
     if (map.getLayer(id)) map.removeLayer(id);
   });
-  if (map.getSource('zoom-biz')) map.removeSource('zoom-biz');
+  if (map.getSource('drill-src')) map.removeSource('drill-src');
 
-  if (!businesses.length) return;
+  if (!businesses || !businesses.length) {
+    console.warn('[Drill] No businesses to render');
+    return;
+  }
 
   const geojson = {
-    type: 'FeatureCollection',
-    features: businesses.map(b => ({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [b.lng, b.lat] },
-      properties: {
-        name:    b.name,
-        type:    b.type,
-        group:   b.cat.group,
-        weight:  b.cat.weight,
-        color:   b.cat.color,
-        icon:    b.cat.icon,
-        label:   b.cat.label,
+    type:'FeatureCollection',
+    features: businesses.filter(b => b.lat && b.lng).map(b => ({
+      type:'Feature',
+      geometry:{ type:'Point', coordinates:[b.lng, b.lat] },
+      properties:{
+        name:    b.name    || 'Unknown',
+        weight:  b.cat?.weight || 3,
+        color:   b.cat?.color  || '#28d88e',
+        icon:    b.cat?.icon   || '🏪',
+        label:   b.cat?.label  || 'Business',
+        group:   b.cat?.group  || 'retail',
         address: b.address || '',
         phone:   b.phone   || '',
-        hours:   b.opening || ''
+        hours:   (b.opening||'').substring(0,60)
       }
     }))
   };
 
-  map.addSource('zoom-biz', { type: 'geojson', data: geojson });
+  console.log('[Drill] Rendering', geojson.features.length, 'business points');
+  map.addSource('drill-src', { type:'geojson', data:geojson });
 
-  // Heatmap — revenue/density heat
+  // ── LAYER 1: Revenue density heatmap ──────────────────────────────────────
+  // High-revenue businesses (banks, hospitals, car dealers) cluster → RED
+  // Low-revenue (schools, churches) → cool blue
+  // Empty streets → fully transparent (base map shows through)
   map.addLayer({
-    id: 'zoom-heat', type: 'heatmap', source: 'zoom-biz',
-    paint: {
-      'heatmap-weight':     ['interpolate',['linear'],['get','weight'], 1,0.2, 5,0.6, 10,1.0],
-      'heatmap-intensity':  ['interpolate',['linear'],['zoom'], 13,1, 15,2.5, 17,4],
-      'heatmap-color': [
-        'interpolate',['linear'],['heatmap-density'],
-        0,   'rgba(0,0,0,0)',
-        0.1, 'rgba(8,40,100,0.5)',
-        0.3, 'rgba(14,120,130,0.65)',
-        0.5, 'rgba(40,200,100,0.75)',
-        0.7, 'rgba(220,180,20,0.85)',
-        0.85,'rgba(240,100,30,0.9)',
-        1.0, 'rgba(220,20,60,0.95)'
+    id:'drill-heat', type:'heatmap', source:'drill-src',
+    paint:{
+      'heatmap-weight':['interpolate',['linear'],['get','weight'],
+        1,0.10, 3,0.30, 5,0.55, 7,0.78, 10,1.0],
+      'heatmap-intensity':['interpolate',['linear'],['zoom'],
+        13,1.0, 14,1.8, 15,3.0, 16,5.0, 17,7.0],
+      'heatmap-radius':['interpolate',['linear'],['zoom'],
+        13,50, 14,38, 15,26, 16,16, 17,10],
+      'heatmap-color':['interpolate',['linear'],['heatmap-density'],
+        0,    'rgba(0,0,0,0)',
+        0.03, 'rgba(4,15,55,0.50)',
+        0.12, 'rgba(8,65,140,0.68)',
+        0.28, 'rgba(12,140,110,0.76)',
+        0.46, 'rgba(35,190,65,0.83)',
+        0.62, 'rgba(200,175,10,0.88)',
+        0.76, 'rgba(232,88,12,0.93)',
+        0.88, 'rgba(212,15,38,0.97)',
+        1.00, 'rgba(155,0,28,1.0)'
       ],
-      'heatmap-radius':   ['interpolate',['linear'],['zoom'], 13,25, 15,35, 17,20],
-      'heatmap-opacity':  ['interpolate',['linear'],['zoom'], 14,0.85, 16,0.4]
+      'heatmap-opacity':['interpolate',['linear'],['zoom'],
+        13,0.90, 14,0.86, 15,0.75, 16,0.55, 17,0.30]
     }
   });
 
-  // Individual business dots
+  // ── LAYER 2: Business dots (zoom 14+, sized by revenue) ──────────────────
   map.addLayer({
-    id: 'zoom-dots', type: 'circle', source: 'zoom-biz',
-    minzoom: 14,
-    paint: {
-      'circle-radius':        ['interpolate',['linear'],['zoom'], 14,4, 16,9, 18,14],
-      'circle-color':         ['get','color'],
-      'circle-opacity':       ['interpolate',['linear'],['zoom'], 14,0.4, 15,0.9],
-      'circle-stroke-color':  '#fff',
-      'circle-stroke-width':  1.5,
-      'circle-stroke-opacity':['interpolate',['linear'],['zoom'], 14,0, 15,0.85]
+    id:'drill-dots', type:'circle', source:'drill-src', minzoom:14,
+    paint:{
+      'circle-radius':['interpolate',['linear'],['zoom'],
+        14,['interpolate',['linear'],['get','weight'],1,3, 5,5, 10,7],
+        16,['interpolate',['linear'],['get','weight'],1,5, 5,11,10,16],
+        18,['interpolate',['linear'],['get','weight'],1,8, 5,16,10,22]
+      ],
+      'circle-color':['get','color'],
+      'circle-opacity':['interpolate',['linear'],['zoom'],14,0.20,15,0.82,17,0.95],
+      'circle-stroke-color':'#ffffff',
+      'circle-stroke-width':['interpolate',['linear'],['zoom'],14,0.5,16,2.0],
+      'circle-stroke-opacity':['interpolate',['linear'],['zoom'],14,0.1,15,0.6,17,0.9]
     }
   });
 
-  // Business labels (zoom 15.5+)
+  // ── LAYER 3: Business name labels (zoom 15.5+) ────────────────────────────
   map.addLayer({
-    id: 'zoom-labels', type: 'symbol', source: 'zoom-biz',
-    minzoom: 15.5,
-    layout: {
-      'text-field': ['concat', ['get','icon'], ' ', ['get','name']],
-      'text-font':  ['DIN Pro Regular','Arial Unicode MS Regular'],
-      'text-size':  ['interpolate',['linear'],['zoom'], 15.5,10, 17,13],
-      'text-anchor':'top',
-      'text-offset':[0, 0.9],
-      'text-allow-overlap': false,
-      'text-max-width': 10
+    id:'drill-labels', type:'symbol', source:'drill-src', minzoom:15.5,
+    layout:{
+      'text-field':['concat',['get','icon'],' ',['get','name']],
+      'text-font':['DIN Pro Regular','Arial Unicode MS Regular'],
+      'text-size':['interpolate',['linear'],['zoom'],15.5,10,17,13,18,15],
+      'text-anchor':'top','text-offset':[0,0.9],
+      'text-allow-overlap':false,'text-max-width':12
     },
-    paint: {
-      'text-color':      '#fff',
-      'text-halo-color': 'rgba(0,0,0,0.88)',
-      'text-halo-width': 2
-    }
+    paint:{ 'text-color':'#fff','text-halo-color':'rgba(0,0,0,0.92)','text-halo-width':2.2 }
   });
 
-  // Click individual business dots for detail popup
-  map.on('click','zoom-dots', e => {
-    if (!e.features.length) return;
-    const p = e.features[0].properties;
-    const pop = new mapboxgl.Popup({ closeButton:true, className:'street-popup', maxWidth:'220px', offset:12 });
-    pop.setLngLat(e.lngLat).setHTML(`
-      <div class="sp-name">${p.icon} ${p.name}</div>
-      <div class="sp-cat">${p.label}</div>
-      ${p.address ? `<div class="sp-row"><span>Address</span><b>${p.address}</b></div>` : ''}
-      ${p.phone   ? `<div class="sp-row"><span>Phone</span><b>${p.phone}</b></div>`   : ''}
-      ${p.hours   ? `<div class="sp-row"><span>Hours</span><b>${p.hours.substring(0,35)}</b></div>` : ''}
-      <div class="sp-row"><span>Revenue Weight</span><b>${'★'.repeat(Math.min(Math.ceil(p.weight/2),5))}</b></div>
-    `).addTo(map);
-  });
-
-  map.on('mouseenter','zoom-dots', () => map.getCanvas().style.cursor = 'pointer');
-  map.on('mouseleave','zoom-dots', () => map.getCanvas().style.cursor = '');
+  // ── Click a dot → business detail popup ────────────────────────────────────
+  if (!drillClicksReady) {
+    drillClicksReady = true;
+    map.on('click','drill-dots', e => {
+      if (!e.features.length) return;
+      const p = e.features[0].properties;
+      if (window._drillPop) window._drillPop.remove();
+      window._drillPop = new mapboxgl.Popup({closeButton:true,className:'street-popup',maxWidth:'240px',offset:14});
+      let html = '<div class="sp-name">' + p.icon + ' ' + p.name + '</div>';
+      html += '<div class="sp-cat">' + p.label + '</div><div class="sp-sep"></div>';
+      if (p.address) html += '<div class="sp-row"><span>Address</span><b>'+ p.address +'</b></div>';
+      if (p.phone)   html += '<div class="sp-row"><span>Phone</span><b>'  + p.phone   +'</b></div>';
+      if (p.hours)   html += '<div class="sp-row"><span>Hours</span><b>'  + p.hours   +'</b></div>';
+      const dots = '●'.repeat(Math.min(Math.ceil(p.weight/2),5));
+      const clr  = p.weight>=9?'#f03060':p.weight>=7?'#f07830':p.weight>=5?'#e8a020':'#28d88e';
+      html += '<div class="sp-row"><span>Revenue Index</span><b style="color:'+clr+'">'+p.weight+'/10 '+dots+'</b></div>';
+      window._drillPop.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    });
+    map.on('mouseenter','drill-dots',()=>map.getCanvas().style.cursor='pointer');
+    map.on('mouseleave','drill-dots',()=>map.getCanvas().style.cursor='');
+  }
 }
 
-function exitZoomDrill() {
-  zoomDrillActive = false;
-  zoomDrillZip    = null;
-
-  // Hide badge
+function leaveDrill(fly=true) {
+  drillActive = false; drillZip = null;
   const badge = document.getElementById('zoom-mode-badge');
   if (badge) badge.classList.add('hidden');
-
-  // Restore wealth layers
-  if (map.getLayer('twi-extrusion')) map.setPaintProperty('twi-extrusion','fill-extrusion-opacity', 0.78);
+  ['drill-heat','drill-dots','drill-labels'].forEach(id=>{if(map.getLayer(id))map.removeLayer(id);});
+  if (map.getSource('drill-src')) map.removeSource('drill-src');
+  if (window._drillPop) { window._drillPop.remove(); window._drillPop=null; }
+  if (map.getLayer('twi-extrusion')) map.setPaintProperty('twi-extrusion','fill-extrusion-opacity',0.78);
   if (map.getLayer('twi-fill'))      map.setPaintProperty('twi-fill','fill-opacity',['case',['boolean',['feature-state','hover'],false],0.88,USE_3D?0.35:0.68]);
-  if (map.getLayer('twi-border'))    map.setPaintProperty('twi-border','line-opacity', 0.9);
-
-  // Restore dark style
-  map.setStyle(MAP_STYLES.dark);
-
-  // Zoom back out to metro view
-  map.flyTo({ center:[-110.95,32.26], zoom:10.8, pitch:USE_3D?45:0, bearing:USE_3D?-15:0, duration:1000 });
+  if (map.getLayer('twi-border'))    map.setPaintProperty('twi-border','line-opacity',0.9);
+  if (map.getLayer('twi-labels'))    map.setLayoutProperty('twi-labels','visibility','visible');
+  if (fly) map.flyTo({center:[-110.95,32.26],zoom:10.8,pitch:USE_3D?45:0,bearing:USE_3D?-15:0,duration:1000});
 }
+
+// Global alias for HTML button onclick
+window.exitZoomDrill = () => leaveDrill(true);
+
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
