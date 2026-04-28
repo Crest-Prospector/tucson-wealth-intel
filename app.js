@@ -622,6 +622,10 @@ async function enterDrill(zip) {
   if (map.getLayer('twi-border'))    map.setPaintProperty('twi-border','line-opacity',0.12);
   if (map.getLayer('twi-labels'))    map.setLayoutProperty('twi-labels','visibility','none');
 
+  // Close ZIP wealth panel and business detail panel so they don't block the street view
+  document.getElementById('detail-panel')?.classList.remove('open');
+  document.getElementById('biz-detail-panel')?.classList.remove('open');
+
   // Update badge with loading state
   const zbEl = document.getElementById('zb-zip');
 
@@ -897,6 +901,7 @@ function leaveDrill(fly=true) {
   ['drill-heat','drill-dots','drill-labels'].forEach(id=>{if(map.getLayer(id))map.removeLayer(id);});
   if (map.getSource('drill-src')) map.removeSource('drill-src');
   if (window._drillPop) { window._drillPop.remove(); window._drillPop=null; }
+  document.getElementById('biz-detail-panel')?.classList.remove('open');
   if (map.getLayer('twi-extrusion')) map.setPaintProperty('twi-extrusion','fill-extrusion-opacity',0.78);
   if (map.getLayer('twi-fill'))      map.setPaintProperty('twi-fill','fill-opacity',['case',['boolean',['feature-state','hover'],false],0.88,USE_3D?0.35:0.68]);
   if (map.getLayer('twi-border'))    map.setPaintProperty('twi-border','line-opacity',0.9);
