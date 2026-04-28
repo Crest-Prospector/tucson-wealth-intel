@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Zona Intel — Tucson Market Intelligence Platform</title>
-<meta name="description" content="Zona Intel: Professional market intelligence for Tucson, AZ. ZIP-level wealth analytics, business density, and investment targeting.">
+<title>Tucson Wealth Map — Tucson Market Intelligence Platform</title>
+<meta name="description" content="Tucson Wealth Map: Professional market intelligence for Tucson, AZ. ZIP-level wealth analytics, business density, and investment targeting.">
 
 <!-- Mapbox -->
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet">
@@ -27,7 +27,7 @@
       <rect x="4" y="26" width="18" height="18" rx="3" fill="#00d4ff" opacity="0.5"/>
       <rect x="26" y="26" width="18" height="18" rx="3" fill="#00d4ff" opacity="0.2"/>
     </svg>
-    <div class="load-brand">ZONA INTEL</div>
+    <div class="load-brand">TUCSON WEALTH MAP</div>
     <div class="load-bar-wrap"><div class="load-bar" id="load-bar"></div></div>
     <div class="load-status" id="loading-status">Initializing platform…</div>
   </div>
@@ -45,7 +45,7 @@
         <rect x="20" y="20" width="14" height="14" rx="2.5" fill="#00d4ff" opacity="0.2"/>
       </svg>
       <div class="brand-text">
-        <div class="brand-name">ZONA INTEL</div>
+        <div class="brand-name">TUCSON WEALTH MAP</div>
         <div class="brand-tagline">Tucson Market Intelligence · Pima County, AZ</div>
       </div>
     </div>
@@ -118,8 +118,8 @@
         <div class="lp-count" id="sb-count">—</div>
       </div>
       <div class="lp-search">
-        <svg class="search-icon" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        <input id="search" class="search-input" placeholder="Search ZIP code or neighborhood…" autocomplete="off">
+        <span class="search-icon">⌕</span>
+        <input id="search" class="search-input" placeholder="Search ZIP or neighborhood…" autocomplete="off">
       </div>
       <div class="lp-filters">
         <button class="f-chip on" data-t="all">All Zones</button>
@@ -144,6 +144,16 @@
         <button class="sty" data-style="satellite">Satellite</button>
         <button class="sty" data-style="streets">Streets</button>
         <button class="sty" data-style="outdoors">Terrain</button>
+      </div>
+
+      <!-- Zoom level indicator -->
+      <div id="zoom-mode-badge" class="zoom-badge hidden">
+        <div class="zb-icon">🔍</div>
+        <div class="zb-text">
+          <div class="zb-title" id="zb-zip"></div>
+          <div class="zb-sub">Street-level business view</div>
+        </div>
+        <button class="zb-exit" onclick="exitZoomDrill()">↩ Metro View</button>
       </div>
 
       <!-- Legend -->
