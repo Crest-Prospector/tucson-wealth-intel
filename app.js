@@ -743,28 +743,152 @@ function paintDrill(businesses) {
     paint:{ 'text-color':'#fff','text-halo-color':'rgba(0,0,0,0.92)','text-halo-width':2.2 }
   });
 
-  // ── Click a dot → business detail popup ────────────────────────────────────
+  // ── HOVER: show quick tooltip ──────────────────────────────────────────────
   if (!drillClicksReady) {
     drillClicksReady = true;
-    map.on('click','drill-dots', e => {
+
+    const hoverPopup = new mapboxgl.Popup({
+      closeButton: false, closeOnClick: false,
+      className: 'hover-popup', maxWidth: '220px', offset: 12
+    });
+
+    map.on('mouseenter', 'drill-dots', e => {
+      map.getCanvas().style.cursor = 'pointer';
       if (!e.features.length) return;
       const p = e.features[0].properties;
-      if (window._drillPop) window._drillPop.remove();
-      window._drillPop = new mapboxgl.Popup({closeButton:true,className:'street-popup',maxWidth:'240px',offset:14});
-      let html = '<div class="sp-name">' + p.icon + ' ' + p.name + '</div>';
-      html += '<div class="sp-cat">' + p.label + '</div><div class="sp-sep"></div>';
-      if (p.address) html += '<div class="sp-row"><span>Address</span><b>'+ p.address +'</b></div>';
-      if (p.phone)   html += '<div class="sp-row"><span>Phone</span><b>'  + p.phone   +'</b></div>';
-      if (p.hours)   html += '<div class="sp-row"><span>Hours</span><b>'  + p.hours   +'</b></div>';
-      const dots = '●'.repeat(Math.min(Math.ceil(p.weight/2),5));
-      const clr  = p.weight>=9?'#f03060':p.weight>=7?'#f07830':p.weight>=5?'#e8a020':'#28d88e';
-      html += '<div class="sp-row"><span>Revenue Index</span><b style="color:'+clr+'">'+p.weight+'/10 '+dots+'</b></div>';
-      window._drillPop.setLngLat(e.lngLat).setHTML(html).addTo(map);
+      const clr = rwColor(p.weight);
+      const stars = '★'.repeat(Math.min(Math.ceil(p.weight/2),5)) + '☆'.repeat(5-Math.min(Math.ceil(p.weight/2),5));
+      hoverPopup.setLngLat(e.features[0].geometry.coordinates).setHTML(`
+        <div class="hp-icon-name">
+          <span class="hp-icon">${p.icon}</span>
+          <div>
+            <div class="hp-name">${p.name}</div>
+            <div class="hp-cat">${p.label}</div>
+          </div>
+        </div>
+        <div class="hp-stars" style="color:${clr}">${stars}</div>
+        <div class="hp-rev" style="color:${clr}">Revenue Index: ${p.weight}/10</div>
+        ${p.address ? `<div class="hp-addr">📍 ${p.address}</div>` : ''}
+        ${p.phone   ? `<div class="hp-addr">📞 ${p.phone}</div>`   : ''}
+        ${p.hours   ? `<div class="hp-addr">🕐 ${p.hours.substring(0,45)}</div>` : ''}
+        <div class="hp-hint">Click for full details & photo →</div>
+      `).addTo(map);
     });
-    map.on('mouseenter','drill-dots',()=>map.getCanvas().style.cursor='pointer');
-    map.on('mouseleave','drill-dots',()=>map.getCanvas().style.cursor='');
+
+    map.on('mouseleave', 'drill-dots', () => {
+      map.getCanvas().style.cursor = '';
+      hoverPopup.remove();
+    });
+
+    // ── CLICK: open full business detail panel ──────────────────────────────
+    map.on('click', 'drill-dots', e => {
+      if (!e.features.length) return;
+      hoverPopup.remove();
+      const p = e.features[0].properties;
+      const [lng, lat] = e.features[0].geometry.coordinates;
+      openBizDetail(p, lat, lng);
+    });
   }
 }
+
+function rwColor(w){if(w>=9)return'#f03060';if(w>=7)return'#f07830';if(w>=5)return'#e8a020';if(w>=3)return'#28d88e';return'#00c8f0';}
+function rwStars(w){return'★'.repeat(Math.min(Math.ceil(w/2),5))+'☆'.repeat(5-Math.min(Math.ceil(w/2),5));}
+
+// ── BUSINESS DETAIL PANEL ─────────────────────────────────────────────────────
+function openBizDetail(p, lat, lng) {
+  const panel = document.getElementById('biz-detail-panel');
+  const clr   = rwColor(p.weight);
+  const stars  = rwStars(p.weight);
+
+  // Google Street View static image (free, browser-accessible, no key for basic)
+  const svUrl = `https://maps.googleapis.com/maps/api/streetview?size=400x220&location=${lat},${lng}&fov=90&heading=0&pitch=0&key=AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY`;
+
+  // Mapillary fallback image (open source street imagery, truly free)
+  // Use a placeholder that shows map context
+  const mapImg = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${lng},${lat},17,0/400x220?access_token=${MAPBOX_TOKEN}`;
+
+  // Revenue tier label
+  const tier = p.weight>=9 ? 'Ultra High Revenue' :
+               p.weight>=7 ? 'High Revenue' :
+               p.weight>=5 ? 'Mid Revenue' :
+               p.weight>=3 ? 'Lower Revenue' : 'Minimal Revenue';
+
+  // Category color bar width
+  const barW = Math.round(p.weight / 10 * 100);
+
+  panel.innerHTML = `
+    <div class="bdp-header">
+      <div class="bdp-close" onclick="closeBizDetail()">✕</div>
+    </div>
+
+    <div class="bdp-photo-wrap">
+      <img class="bdp-photo" src="${mapImg}" alt="Satellite view of ${p.name}"
+           onerror="this.style.display='none';document.getElementById('bdp-noimg').style.display='flex'">
+      <div id="bdp-noimg" class="bdp-noimg" style="display:none">
+        <div class="bdp-noimg-icon">${p.icon}</div>
+        <div class="bdp-noimg-txt">No image available</div>
+      </div>
+      <div class="bdp-photo-label">Satellite View · ${p.address || 'Tucson, AZ'}</div>
+    </div>
+
+    <div class="bdp-body">
+      <div class="bdp-name-row">
+        <span class="bdp-icon">${p.icon}</span>
+        <div>
+          <div class="bdp-name">${p.name}</div>
+          <div class="bdp-cat">${p.label}</div>
+        </div>
+      </div>
+
+      <div class="bdp-revenue-card" style="border-color:${clr}33">
+        <div class="bdp-rev-header">
+          <span class="bdp-rev-label">Revenue Intelligence</span>
+          <span class="bdp-rev-score" style="color:${clr}">${p.weight}/10</span>
+        </div>
+        <div class="bdp-stars" style="color:${clr}">${stars}</div>
+        <div class="bdp-tier" style="color:${clr}">${tier}</div>
+        <div class="bdp-bar-track"><div class="bdp-bar-fill" style="width:${barW}%;background:${clr}"></div></div>
+        <div class="bdp-rev-desc">${getRevenueDesc(p.label, p.weight)}</div>
+      </div>
+
+      <div class="bdp-info-grid">
+        ${p.address ? `<div class="bdp-info-row"><span class="bdp-info-icon">📍</span><div><div class="bdp-info-label">Address</div><div class="bdp-info-val">${p.address}</div></div></div>` : ''}
+        ${p.phone   ? `<div class="bdp-info-row"><span class="bdp-info-icon">📞</span><div><div class="bdp-info-label">Phone</div><div class="bdp-info-val">${p.phone}</div></div></div>` : ''}
+        ${p.hours   ? `<div class="bdp-info-row"><span class="bdp-info-icon">🕐</span><div><div class="bdp-info-label">Hours</div><div class="bdp-info-val">${p.hours}</div></div></div>` : ''}
+        <div class="bdp-info-row">
+          <span class="bdp-info-icon">📊</span>
+          <div><div class="bdp-info-label">Business Sector</div><div class="bdp-info-val">${p.group?.charAt(0).toUpperCase()+p.group?.slice(1) || 'Commercial'}</div></div>
+        </div>
+      </div>
+
+      <div class="bdp-map-actions">
+        <a class="bdp-map-btn" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name + ' ' + (p.address||'Tucson AZ'))}" target="_blank">
+          🗺 Open in Google Maps
+        </a>
+        <a class="bdp-map-btn bdp-map-btn-sec" href="https://www.google.com/maps/@${lat},${lng},19z" target="_blank">
+          📸 Street View
+        </a>
+      </div>
+
+      <div class="bdp-osm-credit">Data: OpenStreetMap contributors · Imagery: Mapbox Satellite</div>
+    </div>
+  `;
+
+  panel.classList.add('open');
+}
+
+function closeBizDetail() {
+  document.getElementById('biz-detail-panel').classList.remove('open');
+}
+
+function getRevenueDesc(label, weight) {
+  if (weight >= 9) return `${label} operations typically generate high annual revenue, making this one of the most commercially significant business types in any zone.`;
+  if (weight >= 7) return `${label} businesses generate strong consistent revenue with broad customer bases and repeat traffic patterns.`;
+  if (weight >= 5) return `${label} operations generate solid mid-tier revenue, serving a reliable local customer base.`;
+  if (weight >= 3) return `${label} businesses serve the community with moderate revenue generation and stable foot traffic.`;
+  return `${label} operations contribute to community infrastructure with lower direct revenue impact.`;
+}
+
 
 function leaveDrill(fly=true) {
   drillActive = false; drillZip = null;
