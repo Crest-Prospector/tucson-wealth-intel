@@ -13,7 +13,7 @@ const STYLES = {
 const GEOJSON_URL = 'https://raw.githubusercontent.com/OpenDataDE/State-zip-code-GeoJSON/master/az_arizona_zip_codes_geo.min.json';
 const TARGET_ZIPS = new Set(Object.keys(ZIP_DATA));
 
-let map, popup, geoData = null;
+let map, popup, geoData = null; window._use3D = true;
 let MODE = 'composite', SELECTED = null, CMP_A = null, CMP_B = null;
 let CMP_OPEN = false, LABELS = true, TIER = 'all', SEARCH = '', USE_3D = true;
 
@@ -41,7 +41,7 @@ async function loadBoundaries(){
       const zip=f.properties.ZCTA5CE10;const d=ZIP_DATA[zip];const s=calcScore(zip,MODE);
       return{...f,id:zip,properties:{...f.properties,zip,name:d?d.name:zip,score:s,medianHome:d?d.medianHome:0,medianIncome:d?d.medianIncome:0,bizIndex:d?d.bizIndex:0}};
     });
-    geoData={type:'FeatureCollection',features};
+    geoData={type:'FeatureCollection',features}; window._geoData=geoData;
     document.getElementById('loading-status').textContent=`${features.length} real ZIP boundaries loaded ✓`;
     return geoData;
   }catch(err){console.error('Boundary load failed:',err);document.getElementById('loading-status').textContent='Error loading — retrying…';return null;}
@@ -49,13 +49,14 @@ async function loadBoundaries(){
 
 // ── MAP INIT ──────────────────────────────────────────────────────────────
 async function initMap(){
-  map=new mapboxgl.Map({container:'map',style:STYLES.dark,center:[-110.95,32.26],zoom:10.8,minZoom:9,maxZoom:17,pitch:USE_3D?45:0,bearing:USE_3D?-15:0,antialias:true});
+  window._use3D = USE_3D;
+  window._map=map=new mapboxgl.Map({container:'map',style:STYLES.dark,center:[-110.95,32.26],zoom:10.8,minZoom:9,maxZoom:17,pitch:USE_3D?45:0,bearing:USE_3D?-15:0,antialias:true});
   map.addControl(new mapboxgl.NavigationControl({visualizePitch:true}),'top-right');
   map.addControl(new mapboxgl.ScaleControl({unit:'imperial'}),'bottom-right');
-  popup=new mapboxgl.Popup({closeButton:false,closeOnClick:false,className:'twi-popup',maxWidth:'260px',offset:16});
+  window._popup=popup=new mapboxgl.Popup({closeButton:false,closeOnClick:false,className:'twi-popup',maxWidth:'260px',offset:16});
   const boundaries=await loadBoundaries();
-  map.on('load',()=>{if(boundaries)addLayers(boundaries);buildSidebar();updateKPIs();hideLoading();});
-  map.on('style.load',()=>{setTimeout(()=>{if(geoData&&!map.getSource('twi-zips'))addLayers(geoData);},200);});
+  map.on("load",()=>{ window._map=map; if(boundaries){addLayers(boundaries); window._geoData=geoData;} buildSidebar();updateKPIs();hideLoading(); });
+  map.on('style.load',()=>{setTimeout(()=>{ window._map=map; window._geoData=geoData; if(geoData&&!map.getSource('twi-zips'))addLayers(geoData);},200);});
 }
 
 function hideLoading(){const el=document.getElementById('loading');el.style.opacity='0';el.style.transition='opacity 0.5s';setTimeout(()=>el.style.display='none',500);}
@@ -189,6 +190,14 @@ function openDetail(zip){
 
   requestAnimationFrame(()=>{document.querySelectorAll('[data-w]').forEach(el=>{el.style.transition='width .9s cubic-bezier(.16,1,.3,1)';el.style.width=el.dataset.w+'%';});});
   document.getElementById('detail').classList.add('open');
+  // Wire drill button
+  const drillBtn = document.getElementById('drill-btn');
+  if(drillBtn) {
+    drillBtn.onclick = () => {
+      drillBtn.classList.add('active');
+      enterDrillMode(zip);
+    };
+  }
   flyToZip(zip);
 }
 
@@ -217,7 +226,7 @@ const ML={composite:'Composite Wealth Score',homes:'Median Home Values',income:'
 function setMode(btn){MODE=btn.dataset.mode;document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('on'));btn.classList.add('on');document.getElementById('leg-title').textContent=ML[MODE];refreshMap();buildSidebar();updateKPIs();if(SELECTED)openDetail(SELECTED);}
 function setStyle(btn){document.querySelectorAll('.sty-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');map.setStyle(STYLES[btn.dataset.style]);}
 function toggleLabels(){LABELS=!LABELS;document.getElementById('labels-btn').classList.toggle('on',LABELS);if(map.getLayer('twi-labels'))map.setLayoutProperty('twi-labels','visibility',LABELS?'visible':'none');}
-function toggle3D(){USE_3D=!USE_3D;document.getElementById('threed-btn').classList.toggle('on',USE_3D);map.easeTo({pitch:USE_3D?45:0,bearing:USE_3D?-15:0,duration:1000});if(geoData)addLayers(geoData);}
+function toggle3D(){USE_3D=!USE_3D; window._use3D=USE_3D;document.getElementById('threed-btn').classList.toggle('on',USE_3D);map.easeTo({pitch:USE_3D?45:0,bearing:USE_3D?-15:0,duration:1000});if(geoData)addLayers(geoData);}
 
 let toastT;function toast(m){const el=document.getElementById('toast');el.textContent=m;el.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('show'),2600);}
 
