@@ -331,18 +331,18 @@ function renderDrillList(businesses) {
     const cat = BIZ_CATEGORIES[type] || BIZ_CATEGORIES.shop;
     html += `
       <div class="drill-group">
-        <div class="drill-group-head">
+        <div class="drill-group-hd">
           <span>${cat.icon} ${cat.label}</span>
-          <span class="drill-group-count">${items.length}</span>
+          <span class="dgc">${items.length}</span>
         </div>
         ${items.slice(0,8).map(b => `
-          <div class="drill-biz-item" onclick="flyToBiz(${b.lat},${b.lng},'${b.name.replace(/'/g,'&#39;')}')">
-            <div class="dbi-dot" style="background:${cat.color}"></div>
-            <div class="dbi-info">
-              <div class="dbi-name">${b.name}</div>
-              ${b.address ? `<div class="dbi-addr">${b.address}</div>` : ''}
+          <div class="drill-biz-row" onclick="flyToBiz(${b.lat},${b.lng},'${b.name.replace(/'/g,'&#39;')}')">
+            <div class="dbr-dot" style="background:${cat.color}"></div>
+            <div class="dbr-info">
+              <div class="dbr-name">${b.name}</div>
+              ${b.address ? `<div class="dbr-addr">${b.address}</div>` : ''}
             </div>
-            <div class="dbi-weight" style="color:${bizHeatColor(cat.weight,1)}">
+            <div class="dbr-wt" style="color:${bizHeatColor(cat.weight,1)}">
               ${'●'.repeat(Math.min(Math.ceil(cat.weight/2),5))}
             </div>
           </div>
@@ -384,10 +384,10 @@ function renderDrillStats(businesses) {
   const highValue = businesses.filter(b=>b.cat.weight>=7).length;
 
   document.getElementById('drill-stats').innerHTML = `
-    <div class="ds-item"><div class="ds-val">${total}</div><div class="ds-lbl">Total Businesses</div></div>
-    <div class="ds-item"><div class="ds-val">${highValue}</div><div class="ds-lbl">High-Revenue</div></div>
-    <div class="ds-item"><div class="ds-val">${avgWeight}</div><div class="ds-lbl">Avg Rev. Index</div></div>
-    <div class="ds-item"><div class="ds-val">${topGroup?topGroup[0]:'—'}</div><div class="ds-lbl">Top Sector</div></div>
+    <div class="ds-cell"><div class="ds-val">${total}</div><div class="ds-lbl">Businesses</div></div>
+    <div class="ds-cell"><div class="ds-val">${highValue}</div><div class="ds-lbl">High Revenue</div></div>
+    <div class="ds-cell"><div class="ds-val">${avgWeight}</div><div class="ds-lbl">Avg Index</div></div>
+    <div class="ds-cell"><div class="ds-val">${topGroup?topGroup[0]:'—'}</div><div class="ds-lbl">Top Sector</div></div>
   `;
 }
 
