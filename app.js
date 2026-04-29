@@ -83,6 +83,7 @@ async function initMap() {
     buildSidebar();
     updateKPIs();
     initZoomDrill();
+    initGeolocation();
     setLoadProgress(100, 'Ready');
     setTimeout(hideLoading, 400);
   });
@@ -585,9 +586,7 @@ function initZoomDrill() {
   map.on('zoomend', () => { clearTimeout(drillTimer); drillTimer = setTimeout(checkDrill, 300); });
   map.on('moveend', () => { clearTimeout(drillTimer); drillTimer = setTimeout(checkDrill, 200); });
 
-  // Register drill-dots interactions ONCE here.
-  // These work even after the layer is removed/re-added because Mapbox
-  // re-fires events when a layer with the same id is re-added to the same source.
+  // Hover tooltip — show business info on dot hover
   const hoverPop = new mapboxgl.Popup({
     closeButton: false, closeOnClick: false,
     className: 'hover-popup', maxWidth: '220px', offset: 12
@@ -596,24 +595,20 @@ function initZoomDrill() {
   map.on('mouseenter', 'drill-dots', e => {
     if (!drillActive || !e.features.length) return;
     map.getCanvas().style.cursor = 'pointer';
-    const p   = e.features[0].properties;
+    const p = e.features[0].properties;
     const clr = rwColor(p.weight);
     const stars = rwStars(p.weight);
-    hoverPop.setLngLat(e.features[0].geometry.coordinates).setHTML(`
-      <div class="hp-icon-name">
-        <span class="hp-icon">${p.icon}</span>
-        <div>
-          <div class="hp-name">${p.name}</div>
-          <div class="hp-cat">${p.label}</div>
-        </div>
-      </div>
-      <div class="hp-stars" style="color:${clr}">${stars}</div>
-      <div class="hp-rev" style="color:${clr}">Revenue Index: ${p.weight}/10</div>
-      ${p.address ? `<div class="hp-addr">📍 ${p.address}</div>` : ''}
-      ${p.phone   ? `<div class="hp-addr">📞 ${p.phone}</div>`   : ''}
-      ${p.hours   ? `<div class="hp-addr">🕐 ${p.hours.substring(0,45)}</div>` : ''}
-      <div class="hp-hint">Click for full details & photo →</div>
-    `).addTo(map);
+    hoverPop.setLngLat(e.features[0].geometry.coordinates).setHTML(
+      '<div class="hp-icon-name"><span class="hp-icon">' + p.icon + '</span>' +
+      '<div><div class="hp-name">' + p.name + '</div>' +
+      '<div class="hp-cat">' + p.label + '</div></div></div>' +
+      '<div class="hp-stars" style="color:' + clr + '">' + stars + '</div>' +
+      '<div class="hp-rev" style="color:' + clr + '">Revenue Index: ' + p.weight + '/10</div>' +
+      (p.address ? '<div class="hp-addr">📍 ' + p.address + '</div>' : '') +
+      (p.phone   ? '<div class="hp-addr">📞 ' + p.phone   + '</div>' : '') +
+      (p.hours   ? '<div class="hp-addr">🕐 ' + p.hours.substring(0,45) + '</div>' : '') +
+      '<div class="hp-hint">Click for full details →</div>'
+    ).addTo(map);
   });
 
   map.on('mouseleave', 'drill-dots', () => {
@@ -621,17 +616,29 @@ function initZoomDrill() {
     hoverPop.remove();
   });
 
-  // THE KEY FIX: click registered once here, never removed, always works
-  map.on('click', 'drill-dots', e => {
-    if (!drillActive || !e.features.length) return;
-    e.originalEvent.stopPropagation(); // prevent bubbling to map click handler
-    hoverPop.remove();
-    const p = e.features[0].properties;
-    const coords = e.features[0].geometry.coordinates;
-    openBizDetail(p, coords[1], coords[0]);
+  // RELIABLE CLICK: use general map click + queryRenderedFeatures
+  // This works regardless of minzoom or layer rendering state
+  map.on('click', e => {
+    if (!drillActive) return;
+
+    // Query a small box around the click point for better hit detection
+    const bbox = [
+      [e.point.x - 10, e.point.y - 10],
+      [e.point.x + 10, e.point.y + 10]
+    ];
+
+    const features = map.queryRenderedFeatures(bbox, { layers: ['drill-dots'] });
+
+    if (features.length > 0) {
+      // Hit a business dot
+      e.originalEvent.stopPropagation();
+      hoverPop.remove();
+      const p = features[0].properties;
+      const coords = features[0].geometry.coordinates;
+      openBizDetail(p, coords[1], coords[0]);
+    }
   });
 }
-
 function checkDrill() {
   const zoom = map.getZoom();
   if (zoom < DRILL_ZOOM) { if (drillActive) leaveDrill(false); return; }
@@ -924,6 +931,50 @@ function leaveDrill(fly=true) {
 
 // Global alias for HTML button onclick
 window.exitZoomDrill = () => leaveDrill(true);
+
+
+
+// ── GEOLOCATION — show user position as a star on the map ────────────────────
+let geoMarker = null;
+let geoWatchId = null;
+
+function initGeolocation() {
+  if (!navigator.geolocation) return;
+
+  // Add geolocate control (built-in Mapbox button)
+  const geoControl = new mapboxgl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true,
+    showUserHeading: true,
+    showAccuracyCircle: true
+  });
+
+  map.addControl(geoControl, 'bottom-right');
+
+  // Custom star marker that shows on map when location is found
+  geoControl.on('geolocate', e => {
+    const { longitude, latitude } = e.coords;
+
+    // Remove old custom marker if exists
+    if (geoMarker) geoMarker.remove();
+
+    // Create a star marker element
+    const el = document.createElement('div');
+    el.className = 'geo-star-marker';
+    el.innerHTML = '★';
+    el.title = 'Your location';
+
+    geoMarker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([longitude, latitude])
+      .setPopup(new mapboxgl.Popup({ offset: 20 }).setHTML(
+        '<div class="sp-name">⭐ You Are Here</div>' +
+        '<div class="sp-cat">Your current location</div><div class="sp-sep"></div>' +
+        '<div class="sp-row"><span>Lat</span><b>' + latitude.toFixed(5) + '</b></div>' +
+        '<div class="sp-row"><span>Lng</span><b>' + longitude.toFixed(5) + '</b></div>'
+      ))
+      .addTo(map);
+  });
+}
 
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
