@@ -866,3 +866,33 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   font-family: var(--font-mono); font-size: 7.5px;
   color: var(--text-4); text-align: center; letter-spacing: 0.3px;
 }
+
+/* ── GEOLOCATION STAR MARKER ── */
+.geo-star-marker {
+  font-size: 28px;
+  line-height: 1;
+  color: #00c8f0;
+  text-shadow:
+    0 0 10px rgba(0,200,240,0.9),
+    0 0 20px rgba(0,200,240,0.6),
+    0 0 40px rgba(0,200,240,0.3);
+  cursor: pointer;
+  animation: starPulse 2s ease-in-out infinite;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.8));
+}
+@keyframes starPulse {
+  0%, 100% { transform: scale(1);   opacity: 1; }
+  50%       { transform: scale(1.2); opacity: 0.85; }
+}
+
+/* Mapbox geolocate control custom style */
+.mapboxgl-ctrl-geolocate {
+  background: var(--bg-2) !important;
+  border: 1px solid var(--line-2) !important;
+}
+.mapboxgl-ctrl-geolocate .mapboxgl-ctrl-icon {
+  filter: invert(1) brightness(0.7);
+}
+.mapboxgl-ctrl-geolocate.mapboxgl-ctrl-geolocate-active .mapboxgl-ctrl-icon {
+  filter: invert(0.4) sepia(1) saturate(5) hue-rotate(155deg);
+}
