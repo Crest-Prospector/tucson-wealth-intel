@@ -97,16 +97,29 @@ async function fetchBusinesses(zip) {
 
   console.log(`[OSM] Querying ${zip}: bbox ${south.toFixed(4)},${west.toFixed(4)},${north.toFixed(4)},${east.toFixed(4)}`);
 
-  const q = `[out:json][timeout:30];(
-    node["amenity"~"bank|atm|restaurant|fast_food|cafe|pharmacy|hospital|clinic|doctors|dentist|bar|pub|nightclub|gym|hotel|motel|school|fuel|veterinary"](${south},${west},${north},${east});
-    node["shop"~"supermarket|grocery|department_store|mall|wholesale|car|motorcycle"](${south},${west},${north},${east});
-    node["shop"](${south},${west},${north},${east});
-    node["office"](${south},${west},${north},${east});
-    node["leisure"~"fitness_centre|golf_course|sports_centre"](${south},${west},${north},${east});
-    way["amenity"~"bank|restaurant|fast_food|cafe|pharmacy|hospital|clinic|hotel|school|gym|fuel"](${south},${west},${north},${east});
-    way["shop"~"supermarket|grocery|department_store|mall|car"](${south},${west},${north},${east});
-    way["leisure"~"fitness_centre|golf_course"](${south},${west},${north},${east});
+  // Focused query — named businesses only, skip residential/generic tags
+  // Using [name] filter dramatically reduces response size and speeds up fetch
+  const q = `[out:json][timeout:20];(
+    node["amenity"~"bank|restaurant|fast_food|cafe|pharmacy|hospital|clinic|doctors|dentist|bar|pub|nightclub|gym|hotel|motel|fuel"]["name"](${south},${west},${north},${east});
+    node["shop"~"supermarket|grocery|department_store|mall|car|motorcycle|convenience"]["name"](${south},${west},${north},${east});
+    node["shop"]["name"](${south},${west},${north},${east});
+    node["office"]["name"](${south},${west},${north},${east});
+    node["leisure"~"fitness_centre|golf_course|sports_centre"]["name"](${south},${west},${north},${east});
+    way["amenity"~"bank|restaurant|fast_food|cafe|pharmacy|hospital|clinic|hotel|gym|fuel"]["name"](${south},${west},${north},${east});
+    way["shop"~"supermarket|grocery|department_store|mall|car"]["name"](${south},${west},${north},${east});
+    way["leisure"~"fitness_centre|golf_course"]["name"](${south},${west},${north},${east});
   );out center tags;`;
+
+  // Check sessionStorage cache first — survives page refresh
+  const cacheKey = 'osm_biz_' + zip;
+  try {
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      console.log('[OSM] Cache hit for', zip, '—', parsed.length, 'businesses');
+      return parsed;
+    }
+  } catch(e) {}
 
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
@@ -136,6 +149,8 @@ async function fetchBusinesses(zip) {
         })
         .filter(Boolean);
       console.log(`[OSM] ${zip}: ${results.length} businesses`);
+      // Cache in sessionStorage so repeat visits are instant
+      try { sessionStorage.setItem(cacheKey, JSON.stringify(results)); } catch(e) {}
       return results;
     } catch (err) {
       console.warn('[OSM] endpoint failed:', err.message);
