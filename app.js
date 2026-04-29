@@ -287,7 +287,7 @@ function buildSidebar() {
     if((TIER!=='all'&&TIER!==t)||(SEARCH&&!z.includes(SEARCH)&&!d.name.toLowerCase().includes(SEARCH)))return;
     count++;
     const c=hex(s);
-    html+=`<div class="zip-row${SELECTED===z?' sel':''}" onclick="openDetail('${z}')">
+    html+=`<div class="zip-row${SELECTED===z?' sel':''}" onmouseenter="prefetchBiz('${z}')" onclick="openDetail('${z}')">
       <span class="zr-rank">${i+1}</span>
       <span class="zr-badge" style="background:${c};color:${s>55?'#000':'#fff'}">${s}</span>
       <span class="zr-info">
@@ -444,6 +444,19 @@ function openDetail(zip) {
 
   document.getElementById('detail-panel').classList.add('open');
   flyToZip(zip);
+
+  // Pre-fetch business data in background so it's instant when user zooms in
+  if (!drillCache[zip]) {
+    setTimeout(() => {
+      if (!drillCache[zip]) {
+        console.log('[Prefetch] Loading businesses for', zip);
+        fetchBusinesses(zip).then(biz => {
+          drillCache[zip] = biz || [];
+          console.log('[Prefetch] Cached', drillCache[zip].length, 'businesses for', zip);
+        }).catch(() => { drillCache[zip] = []; });
+      }
+    }, 800); // small delay so it doesn't compete with map animation
+  }
 }
 
 function closeDetail() {
@@ -577,14 +590,14 @@ function toast(msg){const el=document.getElementById('toast');el.textContent=msg
 // Fades out wealth heatmap → overlays live OSM business revenue heat map.
 // Hot red streets = high revenue business clusters. Empty streets = transparent.
 
-const DRILL_ZOOM = 13.5;
+const DRILL_ZOOM = 12.5;
 let drillActive = false, drillZip = null;
 const drillCache = {};       // zip → businesses (persists per session)
 let drillTimer = null, drillClicksReady = false;
 
 function initZoomDrill() {
-  map.on('zoomend', () => { clearTimeout(drillTimer); drillTimer = setTimeout(checkDrill, 300); });
-  map.on('moveend', () => { clearTimeout(drillTimer); drillTimer = setTimeout(checkDrill, 200); });
+  map.on('zoomend', () => { clearTimeout(drillTimer); drillTimer = setTimeout(checkDrill, 150); });
+  map.on('moveend', () => { if (drillActive) return; clearTimeout(drillTimer); drillTimer = setTimeout(checkDrill, 150); });
 
   // Hover tooltip — show business info on dot hover
   const hoverPop = new mapboxgl.Popup({
@@ -976,6 +989,15 @@ function initGeolocation() {
   });
 }
 
+
+// ── PREFETCH ─────────────────────────────────────────────────────────────────
+function prefetchBiz(zip) {
+  if (drillCache[zip] !== undefined) return; // already fetched or fetching
+  drillCache[zip] = null; // mark as in-progress
+  fetchBusinesses(zip).then(biz => {
+    drillCache[zip] = biz || [];
+  }).catch(() => { drillCache[zip] = []; });
+}
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
