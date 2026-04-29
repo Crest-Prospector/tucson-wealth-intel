@@ -596,8 +596,18 @@ const drillCache = {};       // zip → businesses (persists per session)
 let drillTimer = null, drillClicksReady = false;
 
 function initZoomDrill() {
-  map.on('zoomend', () => { clearTimeout(drillTimer); drillTimer = setTimeout(checkDrill, 150); });
-  map.on('moveend', () => { if (drillActive) return; clearTimeout(drillTimer); drillTimer = setTimeout(checkDrill, 150); });
+  map.on('zoomend', () => {
+    clearTimeout(drillTimer);
+    // Always check on zoom — this is how we exit drill when zooming out
+    drillTimer = setTimeout(checkDrill, 150);
+  });
+  map.on('moveend', () => {
+    // Only check on move if NOT already in drill (panning within drill is fine)
+    // Exception: if zoom is below threshold, always check so we can exit
+    if (drillActive && map.getZoom() >= DRILL_ZOOM) return;
+    clearTimeout(drillTimer);
+    drillTimer = setTimeout(checkDrill, 150);
+  });
 
   // Hover tooltip — show business info on dot hover
   const hoverPop = new mapboxgl.Popup({
@@ -654,7 +664,16 @@ function initZoomDrill() {
 }
 function checkDrill() {
   const zoom = map.getZoom();
-  if (zoom < DRILL_ZOOM) { if (drillActive) leaveDrill(false); return; }
+  if (zoom < DRILL_ZOOM) {
+    // Always clean up drill layers even if drillActive flag is wrong
+    if (drillActive) leaveDrill(false);
+    // Belt-and-suspenders: remove layers directly even if leaveDrill missed them
+    ['drill-heat','drill-dots','drill-labels'].forEach(id => {
+      try { if (map.getLayer(id)) map.removeLayer(id); } catch(e) {}
+    });
+    try { if (map.getSource('drill-src')) map.removeSource('drill-src'); } catch(e) {}
+    return;
+  }
 
   // Sample 5 points across viewport — need 3+ on same ZIP to trigger
   const W = map.getCanvas().clientWidth;
