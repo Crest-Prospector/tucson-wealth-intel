@@ -595,6 +595,9 @@ let drillActive = false, drillZip = null;
 const drillCache = {};       // zip → businesses (persists per session)
 let drillTimer = null, drillClicksReady = false;
 
+function rwColor(w){if(w>=9)return'#f03060';if(w>=7)return'#f07830';if(w>=5)return'#e8a020';if(w>=3)return'#28d88e';return'#00c8f0';}
+function rwStars(w){return'★'.repeat(Math.min(Math.ceil(w/2),5))+'☆'.repeat(5-Math.min(Math.ceil(w/2),5));}
+
 function initZoomDrill() {
   map.on('zoomend', () => {
     clearTimeout(drillTimer);
@@ -846,9 +849,6 @@ function paintDrill(businesses) {
 
   // Interactions registered once in initZoomDrill() below
 }
-
-function rwColor(w){if(w>=9)return'#f03060';if(w>=7)return'#f07830';if(w>=5)return'#e8a020';if(w>=3)return'#28d88e';return'#00c8f0';}
-function rwStars(w){return'★'.repeat(Math.min(Math.ceil(w/2),5))+'☆'.repeat(5-Math.min(Math.ceil(w/2),5));}
 
 // ── BUSINESS DETAIL PANEL ─────────────────────────────────────────────────────
 function openBizDetail(p, lat, lng) {
