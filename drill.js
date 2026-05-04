@@ -97,9 +97,20 @@ async function fetchBusinesses(zip) {
   const d = ZIP_DATA[zip];
   if (!d) return [];
 
-  // Get center coordinates
+  // ── CACHE CHECK (instant if already fetched this session) ─────────────────
+  const cacheKey = 'biz_v3_' + zip;
+  try {
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      console.log('[Cache] ' + zip + ': ' + parsed.length + ' businesses (instant)');
+      return parsed;
+    }
+  } catch(e) {}
+
+  // ── GET BOUNDING BOX ──────────────────────────────────────────────────────
   const feat = window._geoData?.features?.find(f => f.properties.zip === zip);
-  let cLat, cLng, radiusM = 2500;
+  let south, west, north, east, cLat, cLng;
 
   if (feat) {
     const coords = feat.geometry.type === 'MultiPolygon'
@@ -107,103 +118,69 @@ async function fetchBusinesses(zip) {
       : feat.geometry.coordinates.flat(1);
     const lngs = coords.map(c => c[0]);
     const lats  = coords.map(c => c[1]);
-    cLat = (Math.min(...lats) + Math.max(...lats)) / 2;
-    cLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
-    const latSpan = (Math.max(...lats) - Math.min(...lats)) * 111000;
-    const lngSpan = (Math.max(...lngs) - Math.min(...lngs)) * 85000;
-    radiusM = Math.min(Math.max(Math.sqrt(latSpan**2 + lngSpan**2) / 2, 800), 3500);
+    south = Math.min(...lats) - 0.001;
+    west  = Math.min(...lngs) - 0.001;
+    north = Math.max(...lats) + 0.001;
+    east  = Math.max(...lngs) + 0.001;
+    cLat  = (south + north) / 2;
+    cLng  = (west  + east)  / 2;
   } else {
     const c = CENTROIDS[zip];
-    if (!c) return [];
+    if (!c) { console.warn('[Fetch] No centroid for', zip); return []; }
+    const buf = 0.018;
     cLng = c[0]; cLat = c[1];
+    west = cLng-buf; east = cLng+buf; south = cLat-buf; north = cLat+buf;
   }
 
-  // Check sessionStorage cache
-  const cacheKey = `biz_v2_${zip}`;
-  try {
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      console.log(`[Cache] ${zip}: ${parsed.length} businesses`);
-      return parsed;
-    }
-  } catch(e) {}
+  console.log('[OSM] Fetching ' + zip + '...');
 
-  // ── ATTEMPT 1: Foursquare via corsproxy.io (free public CORS proxy) ─────────
-  // No serverless function needed — corsproxy.io relays the request server-side
-  const FSQ_KEY = typeof window !== 'undefined' && window.FSQ_KEY
-    ? window.FSQ_KEY
-    : 'E0VZYDFHUYQPI5VY5BUXXUFQOARZQ1NXPEFQW50OT1MNDNO2';
+  // ── PARALLEL RACE — hit 3 Overpass endpoints simultaneously ───────────────
+  // First one to respond wins. Typical result: 1-2 seconds vs 5+ sequential
+  const query = buildQuery(south, west, north, east);
 
-  try {
-    console.log(`[FSQ] Fetching ${zip}...`);
-    const fsqUrl = `https://api.foursquare.com/v3/places/nearby?ll=${cLat.toFixed(5)},${cLng.toFixed(5)}&radius=${Math.round(radiusM)}&limit=50&fields=name,geocodes,categories,location,hours,tel,website,description,rating,price,photos`;
+  const endpoints = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+  ];
 
-    // corsproxy.io wraps any URL and adds CORS headers — completely free
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(fsqUrl)}`;
+  // Add an 8-second hard timeout so we never hang
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Timeout after 8s')), 8000)
+  );
 
-    const resp = await fetch(proxyUrl, {
-      headers: {
-        'Authorization': FSQ_KEY,
-        'Accept': 'application/json'
-      }
+  const fetchFromEndpoint = (url) =>
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'data=' + encodeURIComponent(query)
+    })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(data => {
+      const results = parseOSM(data.elements || []);
+      if (results.length === 0) throw new Error('Empty result');
+      return results;
     });
 
-    if (resp.ok) {
-      const data = await resp.json();
-      if (data.results && data.results.length > 0) {
-        const businesses = data.results.map(p => {
-          const cat = classifyFSQ(p.categories);
-          const photoUrl = p.photos?.[0]
-            ? `${p.photos[0].prefix}400x300${p.photos[0].suffix}`
-            : null;
-          return {
-            id:       p.fsq_id,
-            name:     p.name,
-            lat:      p.geocodes?.main?.latitude,
-            lng:      p.geocodes?.main?.longitude,
-            cat,
-            address:  [p.location?.address, p.location?.locality].filter(Boolean).join(', '),
-            phone:    p.tel || '',
-            website:  p.website || '',
-            opening:  formatFSQHours(p.hours),
-            rating:   p.rating || null,
-            price:    p.price || null,
-            photoUrl,
-            description: p.description || '',
-            source:   'foursquare'
-          };
-        }).filter(b => b.lat && b.lng);
+  try {
+    // Race all endpoints + timeout — whoever responds first wins
+    const businesses = await Promise.race([
+      Promise.any(endpoints.map(url => fetchFromEndpoint(url))),
+      timeout
+    ]);
 
-        console.log(`[FSQ] ${zip}: ${businesses.length} businesses`);
-        if (businesses.length > 0) {
-          try { sessionStorage.setItem(cacheKey, JSON.stringify(businesses)); } catch(e) {}
-          return businesses;
-        }
-      }
-    }
-  } catch(e) {
-    console.warn('[FSQ] Failed:', e.message);
+    console.log('[OSM] ' + zip + ': ' + businesses.length + ' businesses');
+    try { sessionStorage.setItem(cacheKey, JSON.stringify(businesses)); } catch(e) {}
+    return businesses;
+
+  } catch(err) {
+    console.error('[OSM] All failed for ' + zip + ':', err.message);
+    return [];
   }
+}
 
-  // ── ATTEMPT 2: OpenStreetMap Overpass ──────────────────────────────────────
-  console.log(`[OSM] Fetching ${zip}...`);
-  let south, west, north, east;
-  if (feat) {
-    const coords = feat.geometry.type === 'MultiPolygon'
-      ? feat.geometry.coordinates.flat(2)
-      : feat.geometry.coordinates.flat(1);
-    south = Math.min(...coords.map(c=>c[1])) - 0.002;
-    west  = Math.min(...coords.map(c=>c[0])) - 0.002;
-    north = Math.max(...coords.map(c=>c[1])) + 0.002;
-    east  = Math.max(...coords.map(c=>c[0])) + 0.002;
-  } else {
-    const buf = 0.02;
-    south = cLat-buf; north = cLat+buf; west = cLng-buf; east = cLng+buf;
-  }
-
-  const OVERPASS = ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
-  const q = `[out:json][timeout:20];(
+function buildQuery(south, west, north, east) {
+  return `[out:json][timeout:8];(
     node["amenity"~"bank|atm|restaurant|fast_food|cafe|pharmacy|hospital|clinic|doctors|dentist|bar|pub|gym|hotel|motel|school|fuel"]["name"](${south},${west},${north},${east});
     node["shop"~"supermarket|grocery|department_store|mall|car|convenience"]["name"](${south},${west},${north},${east});
     node["shop"]["name"](${south},${west},${north},${east});
@@ -212,50 +189,31 @@ async function fetchBusinesses(zip) {
     way["amenity"~"bank|restaurant|fast_food|cafe|pharmacy|hospital|clinic|hotel|gym"]["name"](${south},${west},${north},${east});
     way["shop"~"supermarket|grocery|department_store|mall|car"]["name"](${south},${west},${north},${east});
   );out center tags;`;
-
-  for (const endpoint of OVERPASS) {
-    try {
-      const resp = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'data=' + encodeURIComponent(q)
-      });
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      const businesses = (data.elements || [])
-        .filter(el => el.tags?.name)
-        .map(el => {
-          const lat = el.lat ?? el.center?.lat;
-          const lng = el.lon ?? el.center?.lon;
-          if (!lat || !lng) return null;
-          const type = classifyOSM(el.tags);
-          const cat  = BIZ_TYPES[type] || BIZ_TYPES.shop;
-          return {
-            id:      el.id,
-            name:    el.tags.name,
-            lat, lng, cat,
-            address: [el.tags['addr:housenumber'], el.tags['addr:street']].filter(Boolean).join(' '),
-            phone:   el.tags.phone || el.tags['contact:phone'] || '',
-            website: el.tags.website || '',
-            opening: el.tags.opening_hours || '',
-            rating:  null, price: null, photoUrl: null,
-            description: '',
-            source: 'osm'
-          };
-        }).filter(Boolean);
-
-      console.log(`[OSM] ${zip}: ${businesses.length} businesses`);
-      if (businesses.length > 0) {
-        try { sessionStorage.setItem(cacheKey, JSON.stringify(businesses)); } catch(e) {}
-        return businesses;
-      }
-    } catch(e) {
-      console.warn('[OSM] endpoint failed:', e.message);
-    }
-  }
-
-  return [];
 }
+
+function parseOSM(elements) {
+  return elements
+    .filter(el => el.tags?.name)
+    .map(el => {
+      const lat = el.lat ?? el.center?.lat;
+      const lng = el.lon ?? el.center?.lon;
+      if (!lat || !lng) return null;
+      const type = classifyOSM(el.tags);
+      const cat  = BIZ_TYPES[type] || BIZ_TYPES.shop;
+      return {
+        id: el.id, lat, lng, type, cat,
+        name:    el.tags.name,
+        address: [el.tags['addr:housenumber'], el.tags['addr:street']].filter(Boolean).join(' '),
+        phone:   el.tags.phone || el.tags['contact:phone'] || '',
+        website: el.tags.website || '',
+        opening: el.tags.opening_hours || '',
+        rating: null, price: null, photoUrl: null,
+        description: '', source: 'osm'
+      };
+    })
+    .filter(Boolean);
+}
+
 
 function formatFSQHours(hours) {
   if (!hours || !hours.display) return '';
