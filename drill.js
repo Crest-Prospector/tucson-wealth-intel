@@ -1,61 +1,83 @@
-// ─── TUCSON WEALTH MAP — DRILL.JS ────────────────────────────────────────────
-// OpenStreetMap Overpass API — 100% free, CORS-enabled, no key needed
-// Note: Foursquare blocks direct browser calls (CORS) — OSM works natively
+// ─── TUCSON WEALTH MAP — DRILL.JS v2 ─────────────────────────────────────────
+// Business Intelligence Data Engine
+// Priority: Foursquare (via /api/places proxy) → HERE → OpenStreetMap
+// Result: Verified business names, addresses, phone, hours, categories, photos
 // ─────────────────────────────────────────────────────────────────────────────
 
-const OVERPASS_ENDPOINTS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter'
-];
-
+// ── OSM fallback types ────────────────────────────────────────────────────────
 const BIZ_TYPES = {
-  bank:             { label:'Bank / Finance',       icon:'🏦', color:'#f5a623', weight:9,  group:'finance'     },
-  car_dealership:   { label:'Auto Dealership',       icon:'🚗', color:'#f5a623', weight:9,  group:'auto'        },
-  hospital:         { label:'Hospital',              icon:'🏥', color:'#00c8f0', weight:10, group:'medical'     },
-  dentist:          { label:'Dental Office',         icon:'🦷', color:'#00c8f0', weight:6,  group:'medical'     },
-  clinic:           { label:'Medical Clinic',        icon:'⚕️',  color:'#00c8f0', weight:7,  group:'medical'     },
-  pharmacy:         { label:'Pharmacy',              icon:'💊', color:'#a78bfa', weight:6,  group:'medical'     },
-  supermarket:      { label:'Grocery / Supermarket', icon:'🛒', color:'#28d88e', weight:8,  group:'retail'      },
-  department_store: { label:'Department Store',      icon:'🏬', color:'#28d88e', weight:8,  group:'retail'      },
-  hotel:            { label:'Hotel / Motel',         icon:'🏨', color:'#a78bfa', weight:7,  group:'hospitality' },
-  restaurant:       { label:'Restaurant',            icon:'🍽️', color:'#f07830', weight:5,  group:'food'        },
-  fast_food:        { label:'Fast Food',             icon:'🍔', color:'#f07830', weight:4,  group:'food'        },
-  cafe:             { label:'Café / Coffee',         icon:'☕', color:'#f07830', weight:4,  group:'food'        },
-  bar:              { label:'Bar / Nightlife',        icon:'🍺', color:'#ec4899', weight:4,  group:'food'        },
-  gym:              { label:'Gym / Fitness',         icon:'💪', color:'#28d88e', weight:5,  group:'wellness'    },
-  gas_station:      { label:'Gas Station',           icon:'⛽', color:'#6366f1', weight:5,  group:'auto'        },
-  office:           { label:'Office / Professional', icon:'🏢', color:'#00c8f0', weight:6,  group:'office'      },
-  shop:             { label:'Retail Shop',           icon:'🛍️', color:'#e8a020', weight:3,  group:'retail'      },
-  school:           { label:'School',                icon:'🎓', color:'#94a3b8', weight:3,  group:'education'   },
-  golf:             { label:'Golf Course',           icon:'⛳', color:'#28d88e', weight:6,  group:'recreation'  },
+  bank:             { label:'Bank / Finance',        icon:'🏦', color:'#f5a623', weight:9,  group:'finance'     },
+  car_dealership:   { label:'Auto Dealership',        icon:'🚗', color:'#f5a623', weight:9,  group:'auto'        },
+  hospital:         { label:'Hospital',               icon:'🏥', color:'#00c8f0', weight:10, group:'medical'     },
+  dentist:          { label:'Dental Office',          icon:'🦷', color:'#00c8f0', weight:6,  group:'medical'     },
+  clinic:           { label:'Medical Clinic',         icon:'⚕️',  color:'#00c8f0', weight:7,  group:'medical'     },
+  pharmacy:         { label:'Pharmacy',               icon:'💊', color:'#a78bfa', weight:6,  group:'medical'     },
+  supermarket:      { label:'Grocery / Supermarket',  icon:'🛒', color:'#28d88e', weight:8,  group:'retail'      },
+  department_store: { label:'Department Store',       icon:'🏬', color:'#28d88e', weight:8,  group:'retail'      },
+  hotel:            { label:'Hotel / Motel',          icon:'🏨', color:'#a78bfa', weight:7,  group:'hospitality' },
+  restaurant:       { label:'Restaurant',             icon:'🍽️', color:'#f07830', weight:5,  group:'food'        },
+  fast_food:        { label:'Fast Food',              icon:'🍔', color:'#f07830', weight:4,  group:'food'        },
+  cafe:             { label:'Café / Coffee',          icon:'☕', color:'#f07830', weight:4,  group:'food'        },
+  bar:              { label:'Bar / Nightlife',         icon:'🍺', color:'#ec4899', weight:4,  group:'food'        },
+  gym:              { label:'Gym / Fitness',          icon:'💪', color:'#28d88e', weight:5,  group:'wellness'    },
+  gas_station:      { label:'Gas / Auto Services',    icon:'⛽', color:'#6366f1', weight:5,  group:'auto'        },
+  office:           { label:'Office / Professional',  icon:'🏢', color:'#00c8f0', weight:6,  group:'office'      },
+  shop:             { label:'Retail Shop',            icon:'🛍️', color:'#e8a020', weight:3,  group:'retail'      },
+  school:           { label:'School / Education',     icon:'🎓', color:'#94a3b8', weight:3,  group:'education'   },
+  golf:             { label:'Golf Course',            icon:'⛳', color:'#28d88e', weight:6,  group:'recreation'  },
 };
 
-function classifyBiz(tags) {
+// ── Foursquare category ID → our classification ───────────────────────────────
+function classifyFSQ(categories) {
+  if (!categories || !categories.length) return BIZ_TYPES.shop;
+  const id = categories[0]?.id || '';
+  const name = (categories[0]?.name || '').toLowerCase();
+  if (id.startsWith('110') || name.includes('bank') || name.includes('financ')) return BIZ_TYPES.bank;
+  if (id.startsWith('120') || name.includes('food') || name.includes('restaurant')) return BIZ_TYPES.restaurant;
+  if (id.startsWith('121') || name.includes('fast food') || name.includes('burger')) return BIZ_TYPES.fast_food;
+  if (id.startsWith('122') || name.includes('café') || name.includes('coffee')) return BIZ_TYPES.cafe;
+  if (id.startsWith('123') || name.includes('bar') || name.includes('nightlife')) return BIZ_TYPES.bar;
+  if (id.startsWith('150') || name.includes('health') || name.includes('hospital')) return BIZ_TYPES.hospital;
+  if (id.startsWith('151') || name.includes('doctor') || name.includes('clinic')) return BIZ_TYPES.clinic;
+  if (id.startsWith('152') || name.includes('dent')) return BIZ_TYPES.dentist;
+  if (id.startsWith('153') || name.includes('pharmacy') || name.includes('drug')) return BIZ_TYPES.pharmacy;
+  if (name.includes('gym') || name.includes('fitness') || name.includes('yoga')) return BIZ_TYPES.gym;
+  if (name.includes('hotel') || name.includes('motel') || name.includes('inn')) return BIZ_TYPES.hotel;
+  if (name.includes('grocery') || name.includes('supermarket') || name.includes('market')) return BIZ_TYPES.supermarket;
+  if (name.includes('car dealer') || name.includes('auto dealer')) return BIZ_TYPES.car_dealership;
+  if (name.includes('gas') || name.includes('fuel') || name.includes('service station')) return BIZ_TYPES.gas_station;
+  if (name.includes('office') || name.includes('professional')) return BIZ_TYPES.office;
+  if (name.includes('school') || name.includes('universit') || name.includes('college')) return BIZ_TYPES.school;
+  if (name.includes('golf')) return BIZ_TYPES.golf;
+  if (id.startsWith('170') || name.includes('shop') || name.includes('store') || name.includes('retail')) return BIZ_TYPES.shop;
+  return BIZ_TYPES.shop;
+}
+
+function classifyOSM(tags) {
   const a = tags.amenity, s = tags.shop, l = tags.leisure, o = tags.office;
-  if (a === 'bank' || a === 'atm')                       return 'bank';
-  if (a === 'hospital')                                   return 'hospital';
-  if (a === 'dentist')                                    return 'dentist';
-  if (['clinic','doctors','veterinary'].includes(a))      return 'clinic';
-  if (a === 'pharmacy')                                   return 'pharmacy';
-  if (a === 'restaurant')                                 return 'restaurant';
-  if (a === 'fast_food')                                  return 'fast_food';
-  if (a === 'cafe')                                       return 'cafe';
-  if (['bar','pub','nightclub'].includes(a))              return 'bar';
-  if (a === 'fuel')                                       return 'gas_station';
-  if (['school','college','university'].includes(a))      return 'school';
-  if (a === 'place_of_worship')                           return null; // skip
-  if (['gym','fitness_centre'].includes(a||l||''))        return 'gym';
-  if (['hotel','motel'].includes(a))                      return 'hotel';
-  if (['supermarket','grocery'].includes(s))              return 'supermarket';
+  if (a === 'bank' || a === 'atm')                        return 'bank';
+  if (a === 'hospital')                                    return 'hospital';
+  if (a === 'dentist')                                     return 'dentist';
+  if (['clinic','doctors','veterinary'].includes(a))       return 'clinic';
+  if (a === 'pharmacy')                                    return 'pharmacy';
+  if (a === 'restaurant')                                  return 'restaurant';
+  if (a === 'fast_food')                                   return 'fast_food';
+  if (a === 'cafe')                                        return 'cafe';
+  if (['bar','pub','nightclub'].includes(a))               return 'bar';
+  if (a === 'fuel')                                        return 'gas_station';
+  if (['school','college','university'].includes(a))       return 'school';
+  if (['gym','fitness_centre'].includes(a||l||''))         return 'gym';
+  if (['hotel','motel'].includes(a))                       return 'hotel';
+  if (['supermarket','grocery'].includes(s))               return 'supermarket';
   if (['mall','department_store','wholesale'].includes(s)) return 'department_store';
-  if (['car','car_dealer','motorcycle'].includes(s))      return 'car_dealership';
-  if (l === 'golf_course')                                return 'golf';
-  if (o)                                                  return 'office';
-  if (s)                                                  return 'shop';
+  if (['car','car_dealer','motorcycle'].includes(s))       return 'car_dealership';
+  if (l === 'golf_course')                                 return 'golf';
+  if (o)                                                   return 'office';
+  if (s)                                                   return 'shop';
   return 'shop';
 }
 
-// ── CENTROID FALLBACKS (used if polygon not loaded yet) ──────────────────────
+// ── Centroid fallbacks ────────────────────────────────────────────────────────
 const CENTROIDS = {
   "85718":[-110.933,32.353],"85750":[-110.815,32.260],"85749":[-110.752,32.163],
   "85737":[-110.966,32.420],"85739":[-110.928,32.460],"85742":[-111.052,32.407],
@@ -70,91 +92,155 @@ const CENTROIDS = {
   "85614":[-111.005,31.875],"85622":[-110.975,31.860]
 };
 
-// ── MAIN: fetch businesses for a ZIP ─────────────────────────────────────────
+// ── MAIN FETCH FUNCTION ───────────────────────────────────────────────────────
 async function fetchBusinesses(zip) {
-  let south, west, north, east;
+  const d = ZIP_DATA[zip];
+  if (!d) return [];
 
-  // Try to get bbox from real polygon boundary in _geoData
+  // Get center coordinates
   const feat = window._geoData?.features?.find(f => f.properties.zip === zip);
+  let cLat, cLng, radiusM = 2500;
+
   if (feat) {
     const coords = feat.geometry.type === 'MultiPolygon'
       ? feat.geometry.coordinates.flat(2)
       : feat.geometry.coordinates.flat(1);
     const lngs = coords.map(c => c[0]);
     const lats  = coords.map(c => c[1]);
-    south = Math.min(...lats) - 0.002;
-    west  = Math.min(...lngs) - 0.002;
-    north = Math.max(...lats) + 0.002;
-    east  = Math.max(...lngs) + 0.002;
+    cLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+    cLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+    const latSpan = (Math.max(...lats) - Math.min(...lats)) * 111000;
+    const lngSpan = (Math.max(...lngs) - Math.min(...lngs)) * 85000;
+    radiusM = Math.min(Math.max(Math.sqrt(latSpan**2 + lngSpan**2) / 2, 800), 3500);
   } else {
-    // Fallback to known centroid + buffer
     const c = CENTROIDS[zip];
-    if (!c) { console.warn('[OSM] No centroid for', zip); return []; }
-    const buf = 0.02;
-    west  = c[0] - buf; east  = c[0] + buf;
-    south = c[1] - buf; north = c[1] + buf;
+    if (!c) return [];
+    cLng = c[0]; cLat = c[1];
   }
 
-  console.log(`[OSM] Querying ${zip}: bbox ${south.toFixed(4)},${west.toFixed(4)},${north.toFixed(4)},${east.toFixed(4)}`);
-
-  // Focused query — named businesses only, skip residential/generic tags
-  // Using [name] filter dramatically reduces response size and speeds up fetch
-  const q = `[out:json][timeout:20];(
-    node["amenity"~"bank|restaurant|fast_food|cafe|pharmacy|hospital|clinic|doctors|dentist|bar|pub|nightclub|gym|hotel|motel|fuel"]["name"](${south},${west},${north},${east});
-    node["shop"~"supermarket|grocery|department_store|mall|car|motorcycle|convenience"]["name"](${south},${west},${north},${east});
-    node["shop"]["name"](${south},${west},${north},${east});
-    node["office"]["name"](${south},${west},${north},${east});
-    node["leisure"~"fitness_centre|golf_course|sports_centre"]["name"](${south},${west},${north},${east});
-    way["amenity"~"bank|restaurant|fast_food|cafe|pharmacy|hospital|clinic|hotel|gym|fuel"]["name"](${south},${west},${north},${east});
-    way["shop"~"supermarket|grocery|department_store|mall|car"]["name"](${south},${west},${north},${east});
-    way["leisure"~"fitness_centre|golf_course"]["name"](${south},${west},${north},${east});
-  );out center tags;`;
-
-  // Check sessionStorage cache first — survives page refresh
-  const cacheKey = 'osm_biz_' + zip;
+  // Check sessionStorage cache
+  const cacheKey = `biz_v2_${zip}`;
   try {
     const cached = sessionStorage.getItem(cacheKey);
     if (cached) {
       const parsed = JSON.parse(cached);
-      console.log('[OSM] Cache hit for', zip, '—', parsed.length, 'businesses');
+      console.log(`[Cache] ${zip}: ${parsed.length} businesses`);
       return parsed;
     }
   } catch(e) {}
 
-  for (const endpoint of OVERPASS_ENDPOINTS) {
+  // ── ATTEMPT 1: Foursquare via serverless proxy ─────────────────────────────
+  try {
+    console.log(`[FSQ] Fetching ${zip}...`);
+    const resp = await fetch(`/api/places?ll=${cLat.toFixed(5)},${cLng.toFixed(5)}&radius=${Math.round(radiusM)}&limit=50`);
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.results && data.results.length > 0) {
+        const businesses = data.results.map(p => {
+          const cat = classifyFSQ(p.categories);
+          const photoUrl = p.photos?.[0]
+            ? `${p.photos[0].prefix}400x300${p.photos[0].suffix}`
+            : null;
+          return {
+            id:       p.fsq_id,
+            name:     p.name,
+            lat:      p.geocodes?.main?.latitude,
+            lng:      p.geocodes?.main?.longitude,
+            cat,
+            address:  [p.location?.address, p.location?.locality].filter(Boolean).join(', '),
+            phone:    p.tel || '',
+            website:  p.website || '',
+            opening:  formatFSQHours(p.hours),
+            rating:   p.rating || null,
+            price:    p.price || null,
+            photoUrl,
+            description: p.description || '',
+            source:   'foursquare'
+          };
+        }).filter(b => b.lat && b.lng);
+        console.log(`[FSQ] ${zip}: ${businesses.length} businesses`);
+        if (businesses.length > 0) {
+          try { sessionStorage.setItem(cacheKey, JSON.stringify(businesses)); } catch(e) {}
+          return businesses;
+        }
+      }
+    }
+  } catch(e) {
+    console.warn('[FSQ] Failed:', e.message);
+  }
+
+  // ── ATTEMPT 2: OpenStreetMap Overpass ──────────────────────────────────────
+  console.log(`[OSM] Fetching ${zip}...`);
+  let south, west, north, east;
+  if (feat) {
+    const coords = feat.geometry.type === 'MultiPolygon'
+      ? feat.geometry.coordinates.flat(2)
+      : feat.geometry.coordinates.flat(1);
+    south = Math.min(...coords.map(c=>c[1])) - 0.002;
+    west  = Math.min(...coords.map(c=>c[0])) - 0.002;
+    north = Math.max(...coords.map(c=>c[1])) + 0.002;
+    east  = Math.max(...coords.map(c=>c[0])) + 0.002;
+  } else {
+    const buf = 0.02;
+    south = cLat-buf; north = cLat+buf; west = cLng-buf; east = cLng+buf;
+  }
+
+  const OVERPASS = ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+  const q = `[out:json][timeout:20];(
+    node["amenity"~"bank|atm|restaurant|fast_food|cafe|pharmacy|hospital|clinic|doctors|dentist|bar|pub|gym|hotel|motel|school|fuel"]["name"](${south},${west},${north},${east});
+    node["shop"~"supermarket|grocery|department_store|mall|car|convenience"]["name"](${south},${west},${north},${east});
+    node["shop"]["name"](${south},${west},${north},${east});
+    node["office"]["name"](${south},${west},${north},${east});
+    node["leisure"~"fitness_centre|golf_course"]["name"](${south},${west},${north},${east});
+    way["amenity"~"bank|restaurant|fast_food|cafe|pharmacy|hospital|clinic|hotel|gym"]["name"](${south},${west},${north},${east});
+    way["shop"~"supermarket|grocery|department_store|mall|car"]["name"](${south},${west},${north},${east});
+  );out center tags;`;
+
+  for (const endpoint of OVERPASS) {
     try {
       const resp = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'data=' + encodeURIComponent(q)
       });
-      if (!resp.ok) { console.warn('[OSM]', endpoint, resp.status); continue; }
+      if (!resp.ok) continue;
       const data = await resp.json();
-      const results = (data.elements || [])
-        .filter(el => el.tags && (el.tags.name || el.tags.amenity || el.tags.shop))
+      const businesses = (data.elements || [])
+        .filter(el => el.tags?.name)
         .map(el => {
           const lat = el.lat ?? el.center?.lat;
           const lng = el.lon ?? el.center?.lon;
           if (!lat || !lng) return null;
-          const type = classifyBiz(el.tags);
-          if (!type) return null;
-          const cat = BIZ_TYPES[type] || BIZ_TYPES.shop;
+          const type = classifyOSM(el.tags);
+          const cat  = BIZ_TYPES[type] || BIZ_TYPES.shop;
           return {
-            id: el.id, lat, lng, type, cat,
-            name:    el.tags.name || el.tags.brand || cat.label,
+            id:      el.id,
+            name:    el.tags.name,
+            lat, lng, cat,
             address: [el.tags['addr:housenumber'], el.tags['addr:street']].filter(Boolean).join(' '),
             phone:   el.tags.phone || el.tags['contact:phone'] || '',
-            opening: el.tags.opening_hours || ''
+            website: el.tags.website || '',
+            opening: el.tags.opening_hours || '',
+            rating:  null, price: null, photoUrl: null,
+            description: '',
+            source: 'osm'
           };
-        })
-        .filter(Boolean);
-      console.log(`[OSM] ${zip}: ${results.length} businesses`);
-      // Cache in sessionStorage so repeat visits are instant
-      try { sessionStorage.setItem(cacheKey, JSON.stringify(results)); } catch(e) {}
-      return results;
-    } catch (err) {
-      console.warn('[OSM] endpoint failed:', err.message);
+        }).filter(Boolean);
+
+      console.log(`[OSM] ${zip}: ${businesses.length} businesses`);
+      if (businesses.length > 0) {
+        try { sessionStorage.setItem(cacheKey, JSON.stringify(businesses)); } catch(e) {}
+        return businesses;
+      }
+    } catch(e) {
+      console.warn('[OSM] endpoint failed:', e.message);
     }
   }
+
   return [];
+}
+
+function formatFSQHours(hours) {
+  if (!hours || !hours.display) return '';
+  return hours.display.slice(0, 60);
 }
