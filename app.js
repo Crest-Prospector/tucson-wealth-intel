@@ -730,12 +730,7 @@ async function enterDrill(zip) {
   // Update badge with loading state
   const zbEl = document.getElementById('zb-zip');
 
-  // Use cache if we already fetched this ZIP
-  if (drillCache[zip]) {
-    paintDrill(drillCache[zip]);
-    if (zbEl) zbEl.textContent = zip + ' · ' + d.name + ' (' + drillCache[zip].length + ' businesses)';
-    return;
-  }
+  // Note: sessionStorage cache is handled inside fetchBusinesses itself
 
   if (zbEl) zbEl.textContent = zip + ' · Loading businesses…';
 
@@ -1146,6 +1141,16 @@ function prefetchBiz(zip) {
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // Clear any stale business caches from previous sessions
+  // This ensures users always get fresh data, not stale empty results
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key && key.startsWith('biz_')) keysToRemove.push(key);
+    }
+    keysToRemove.forEach(k => sessionStorage.removeItem(k));
+  } catch(e) {}
   initMap();
 
   document.getElementById('mode-group').addEventListener('click',e=>{if(e.target.classList.contains('ltab')||e.target.closest('.ltab')){const b=e.target.closest('.ltab');setMode(b);}});
