@@ -94,90 +94,97 @@ const CENTROIDS = {
 
 // ── MAIN FETCH FUNCTION ───────────────────────────────────────────────────────
 async function fetchBusinesses(zip) {
-  const d = ZIP_DATA[zip];
-  if (!d) return [];
+  if (!ZIP_DATA[zip]) return [];
 
-  // ── CACHE CHECK (instant if already fetched this session) ─────────────────
-  const cacheKey = 'biz_v3_' + zip;
+  // ── INSTANT CACHE ─────────────────────────────────────────────────────────
+  const cacheKey = 'biz_v4_' + zip;
   try {
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      console.log('[Cache] ' + zip + ': ' + parsed.length + ' businesses (instant)');
-      return parsed;
+    const hit = sessionStorage.getItem(cacheKey);
+    if (hit) {
+      const arr = JSON.parse(hit);
+      console.log('[Cache] ' + zip + ': ' + arr.length + ' businesses');
+      return arr;
     }
   } catch(e) {}
 
   // ── GET BOUNDING BOX ──────────────────────────────────────────────────────
   const feat = window._geoData?.features?.find(f => f.properties.zip === zip);
-  let south, west, north, east, cLat, cLng;
+  let south, west, north, east;
 
   if (feat) {
     const coords = feat.geometry.type === 'MultiPolygon'
       ? feat.geometry.coordinates.flat(2)
       : feat.geometry.coordinates.flat(1);
-    const lngs = coords.map(c => c[0]);
-    const lats  = coords.map(c => c[1]);
-    south = Math.min(...lats) - 0.001;
-    west  = Math.min(...lngs) - 0.001;
-    north = Math.max(...lats) + 0.001;
-    east  = Math.max(...lngs) + 0.001;
-    cLat  = (south + north) / 2;
-    cLng  = (west  + east)  / 2;
+    const lats = coords.map(c => c[1]);  // lat = index 1
+    const lngs = coords.map(c => c[0]);  // lng = index 0
+    south = Math.min(...lats) - 0.005;
+    north = Math.max(...lats) + 0.005;
+    west  = Math.min(...lngs) - 0.005;
+    east  = Math.max(...lngs) + 0.005;
   } else {
     const c = CENTROIDS[zip];
-    if (!c) { console.warn('[Fetch] No centroid for', zip); return []; }
-    const buf = 0.018;
-    cLng = c[0]; cLat = c[1];
-    west = cLng-buf; east = cLng+buf; south = cLat-buf; north = cLat+buf;
+    if (!c) return [];
+    // CENTROIDS[zip] = [lng, lat]
+    const buf = 0.025;
+    west  = c[0] - buf; east  = c[0] + buf;
+    south = c[1] - buf; north = c[1] + buf;
   }
 
-  console.log('[OSM] Fetching ' + zip + '...');
+  console.log('[OSM] ' + zip + ' bbox: ' + south.toFixed(4) + ',' + west.toFixed(4) + ',' + north.toFixed(4) + ',' + east.toFixed(4));
 
-  // ── PARALLEL RACE — hit 3 Overpass endpoints simultaneously ───────────────
-  // First one to respond wins. Typical result: 1-2 seconds vs 5+ sequential
-  const query = buildQuery(south, west, north, east);
-
+  // ── FETCH WITH SEQUENTIAL FALLBACK ────────────────────────────────────────
+  // Try endpoints one at a time with individual timeouts
+  // More reliable than Promise.race() which can have browser compatibility issues
   const endpoints = [
     'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter',
-    'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+    'https://overpass.kumi.systems/api/interpreter'
   ];
 
-  // Add an 8-second hard timeout so we never hang
-  const timeout = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('Timeout after 8s')), 8000)
-  );
+  const query = '[out:json][timeout:10];(' +
+    'node["amenity"~"bank|atm|restaurant|fast_food|cafe|pharmacy|hospital|clinic|doctors|dentist|bar|pub|gym|hotel|motel|school|fuel"]["name"](' + south + ',' + west + ',' + north + ',' + east + ');' +
+    'node["shop"]["name"](' + south + ',' + west + ',' + north + ',' + east + ');' +
+    'node["office"]["name"](' + south + ',' + west + ',' + north + ',' + east + ');' +
+    'node["leisure"~"fitness_centre|golf_course"]["name"](' + south + ',' + west + ',' + north + ',' + east + ');' +
+    'way["amenity"~"bank|restaurant|fast_food|cafe|pharmacy|hospital|clinic|hotel|gym"]["name"](' + south + ',' + west + ',' + north + ',' + east + ');' +
+    'way["shop"]["name"](' + south + ',' + west + ',' + north + ',' + east + ');' +
+    ');out center tags;';
 
-  const fetchFromEndpoint = (url) =>
-    fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'data=' + encodeURIComponent(query)
-    })
-    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-    .then(data => {
+  for (const endpoint of endpoints) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(query)
+      });
+      clearTimeout(timer);
+
+      if (!resp.ok) { console.warn('[OSM] ' + endpoint + ' returned ' + resp.status); continue; }
+
+      const data = await resp.json();
       const results = parseOSM(data.elements || []);
-      if (results.length === 0) throw new Error('Empty result');
+      console.log('[OSM] ' + zip + ' via ' + endpoint.split('/')[2] + ': ' + results.length + ' businesses');
+
+      // Cache even if empty (so we don't re-fetch rural ZIPs)
+      try { sessionStorage.setItem(cacheKey, JSON.stringify(results)); } catch(e) {}
       return results;
-    });
 
-  try {
-    // Race all endpoints + timeout — whoever responds first wins
-    const businesses = await Promise.race([
-      Promise.any(endpoints.map(url => fetchFromEndpoint(url))),
-      timeout
-    ]);
-
-    console.log('[OSM] ' + zip + ': ' + businesses.length + ' businesses');
-    try { sessionStorage.setItem(cacheKey, JSON.stringify(businesses)); } catch(e) {}
-    return businesses;
-
-  } catch(err) {
-    console.error('[OSM] All failed for ' + zip + ':', err.message);
-    return [];
+    } catch(err) {
+      if (err.name === 'AbortError') {
+        console.warn('[OSM] Timeout on ' + endpoint);
+      } else {
+        console.warn('[OSM] Error on ' + endpoint + ':', err.message);
+      }
+    }
   }
+
+  console.error('[OSM] All endpoints failed for', zip);
+  return [];
 }
+
 
 function buildQuery(south, west, north, east) {
   return `[out:json][timeout:8];(
