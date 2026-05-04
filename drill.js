@@ -129,10 +129,26 @@ async function fetchBusinesses(zip) {
     }
   } catch(e) {}
 
-  // ── ATTEMPT 1: Foursquare via serverless proxy ─────────────────────────────
+  // ── ATTEMPT 1: Foursquare via corsproxy.io (free public CORS proxy) ─────────
+  // No serverless function needed — corsproxy.io relays the request server-side
+  const FSQ_KEY = typeof window !== 'undefined' && window.FSQ_KEY
+    ? window.FSQ_KEY
+    : 'E0VZYDFHUYQPI5VY5BUXXUFQOARZQ1NXPEFQW50OT1MNDNO2';
+
   try {
     console.log(`[FSQ] Fetching ${zip}...`);
-    const resp = await fetch(`/api/places?ll=${cLat.toFixed(5)},${cLng.toFixed(5)}&radius=${Math.round(radiusM)}&limit=50`);
+    const fsqUrl = `https://api.foursquare.com/v3/places/nearby?ll=${cLat.toFixed(5)},${cLng.toFixed(5)}&radius=${Math.round(radiusM)}&limit=50&fields=name,geocodes,categories,location,hours,tel,website,description,rating,price,photos`;
+
+    // corsproxy.io wraps any URL and adds CORS headers — completely free
+    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(fsqUrl)}`;
+
+    const resp = await fetch(proxyUrl, {
+      headers: {
+        'Authorization': FSQ_KEY,
+        'Accept': 'application/json'
+      }
+    });
+
     if (resp.ok) {
       const data = await resp.json();
       if (data.results && data.results.length > 0) {
@@ -158,6 +174,7 @@ async function fetchBusinesses(zip) {
             source:   'foursquare'
           };
         }).filter(b => b.lat && b.lng);
+
         console.log(`[FSQ] ${zip}: ${businesses.length} businesses`);
         if (businesses.length > 0) {
           try { sessionStorage.setItem(cacheKey, JSON.stringify(businesses)); } catch(e) {}
