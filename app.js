@@ -730,7 +730,13 @@ async function enterDrill(zip) {
   // Update badge with loading state
   const zbEl = document.getElementById('zb-zip');
 
-  // Note: sessionStorage cache is handled inside fetchBusinesses itself
+  // Use cache if we already fetched this ZIP (and got results)
+  if (drillCache[zip] && drillCache[zip].length > 0) {
+    paintDrill(drillCache[zip]);
+    const zbEl = document.getElementById('zb-zip');
+    if (zbEl) zbEl.textContent = zip + ' · ' + d.name + ' (' + drillCache[zip].length + ' businesses)';
+    return;
+  }
 
   if (zbEl) zbEl.textContent = zip + ' · Loading businesses…';
 
@@ -1150,6 +1156,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (key && key.startsWith('biz_')) keysToRemove.push(key);
     }
     keysToRemove.forEach(k => sessionStorage.removeItem(k));
+    // Also clear geo cache to force fresh boundary load
+    // (comment this out if load times are too slow)
+    // sessionStorage.removeItem('twi_az_geo_v3');
   } catch(e) {}
   initMap();
 
