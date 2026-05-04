@@ -168,8 +168,10 @@ async function fetchBusinesses(zip) {
       const results = parseOSM(data.elements || []);
       console.log('[OSM] ' + zip + ' via ' + endpoint.split('/')[2] + ': ' + results.length + ' businesses');
 
-      // Cache even if empty (so we don't re-fetch rural ZIPs)
-      try { sessionStorage.setItem(cacheKey, JSON.stringify(results)); } catch(e) {}
+      // Only cache non-empty results — empty results should be re-tried
+      if (results.length > 0) {
+        try { sessionStorage.setItem(cacheKey, JSON.stringify(results)); } catch(e) {}
+      }
       return results;
 
     } catch(err) {
