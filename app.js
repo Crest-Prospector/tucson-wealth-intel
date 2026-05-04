@@ -701,6 +701,7 @@ function checkDrill() {
 async function enterDrill(zip) {
   drillActive = true;
   drillZip = zip;
+  window.drillZip = zip;
   const d = ZIP_DATA[zip]; if (!d) return;
 
   // Immediately kill the ZIP hover popup so it doesn't block dot interactions
@@ -850,83 +851,179 @@ function paintDrill(businesses) {
   // Interactions registered once in initZoomDrill() below
 }
 
-// ── BUSINESS DETAIL PANEL ─────────────────────────────────────────────────────
+// ── BUSINESS INTELLIGENCE PANEL ──────────────────────────────────────────────
+// Slides in from the right on business dot click
+// Shows verified name, category, contact info, photo, revenue intelligence,
+// market context, and direct action links
+
 function openBizDetail(p, lat, lng) {
   const panel = document.getElementById('biz-detail-panel');
+  if (!panel) return;
+
   const clr   = rwColor(p.weight);
   const stars  = rwStars(p.weight);
+  const zip   = drillZip || '';
+  const zipD  = ZIP_DATA[zip] || {};
 
-  // Google Street View static image (free, browser-accessible, no key for basic)
-  const svUrl = `https://maps.googleapis.com/maps/api/streetview?size=400x220&location=${lat},${lng}&fov=90&heading=0&pitch=0&key=AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY`;
+  // Revenue tier
+  const tier = p.weight>=9 ? 'Ultra High Revenue Category' :
+               p.weight>=7 ? 'High Revenue Category' :
+               p.weight>=5 ? 'Mid Revenue Category' :
+               p.weight>=3 ? 'Lower Revenue Category' : 'Low Revenue Category';
 
-  // Mapillary fallback image (open source street imagery, truly free)
-  // Use a placeholder that shows map context
-  const mapImg = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${lng},${lat},17,0/400x220?access_token=${MAPBOX_TOKEN}`;
+  // Market context — how does this biz fit this ZIP?
+  const zipScore = zip ? calcScore(zip,'composite') : 0;
+  const marketFit = getMarketFit(p.group, zip, zipD);
 
-  // Revenue tier label
-  const tier = p.weight>=9 ? 'Ultra High Revenue' :
-               p.weight>=7 ? 'High Revenue' :
-               p.weight>=5 ? 'Mid Revenue' :
-               p.weight>=3 ? 'Lower Revenue' : 'Minimal Revenue';
+  // Data source badge
+  const srcBadge = p.source === 'foursquare'
+    ? '<span class="src-badge src-fsq">Foursquare Verified</span>'
+    : '<span class="src-badge src-osm">OpenStreetMap</span>';
 
-  // Category color bar width
-  const barW = Math.round(p.weight / 10 * 100);
+  // Photo — use Foursquare photo, or Mapbox satellite fallback
+  const mapImg = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${lng},${lat},17,0/380x200?access_token=${MAPBOX_TOKEN}`;
+  const photoSrc = p.photoUrl || mapImg;
+
+  // Rating display
+  const ratingHtml = p.rating
+    ? `<div class="bdp-rating"><span class="bdp-rating-num">${(p.rating/2).toFixed(1)}</span><span class="bdp-rating-stars">${'★'.repeat(Math.round(p.rating/2))}${'☆'.repeat(5-Math.round(p.rating/2))}</span><span class="bdp-rating-src">Foursquare</span></div>`
+    : '';
+
+  // Price display
+  const priceMap = {1:'$', 2:'$$', 3:'$$$', 4:'$$$$'};
+  const priceHtml = p.price
+    ? `<span class="bdp-price">${priceMap[p.price] || ''}</span>`
+    : '';
 
   panel.innerHTML = `
-    <div class="bdp-header">
-      <div class="bdp-close" onclick="closeBizDetail()">✕</div>
+    <div class="bdp-topbar">
+      <div class="bdp-back" onclick="closeBizDetail()">
+        <svg viewBox="0 0 16 16" fill="none" width="12" height="12"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Back to ${zip} Businesses
+      </div>
+      ${srcBadge}
     </div>
 
     <div class="bdp-photo-wrap">
-      <img class="bdp-photo" src="${mapImg}" alt="Satellite view of ${p.name}"
-           onerror="this.style.display='none';document.getElementById('bdp-noimg').style.display='flex'">
-      <div id="bdp-noimg" class="bdp-noimg" style="display:none">
-        <div class="bdp-noimg-icon">${p.icon}</div>
-        <div class="bdp-noimg-txt">No image available</div>
+      <img class="bdp-photo" src="${photoSrc}"
+           onerror="this.src='${mapImg}'"
+           alt="${p.name}">
+      <div class="bdp-photo-overlay">
+        <span class="bdp-photo-type">${p.icon} ${p.label}</span>
+        ${priceHtml}
       </div>
-      <div class="bdp-photo-label">Satellite View · ${p.address || 'Tucson, AZ'}</div>
     </div>
 
-    <div class="bdp-body">
-      <div class="bdp-name-row">
-        <span class="bdp-icon">${p.icon}</span>
-        <div>
-          <div class="bdp-name">${p.name}</div>
-          <div class="bdp-cat">${p.label}</div>
-        </div>
+    <div class="bdp-content">
+
+      <div class="bdp-name-block">
+        <div class="bdp-biz-name">${p.name}</div>
+        <div class="bdp-biz-sub">${p.label} · ${zip ? zip + ' ' + (zipD.name||'') : ''}</div>
+        ${ratingHtml}
+        ${p.description ? `<div class="bdp-description">${p.description}</div>` : ''}
       </div>
 
-      <div class="bdp-revenue-card" style="border-color:${clr}33">
-        <div class="bdp-rev-header">
-          <span class="bdp-rev-label">Revenue Intelligence</span>
-          <span class="bdp-rev-score" style="color:${clr}">${p.weight}/10</span>
+      <!-- REVENUE INTELLIGENCE CARD -->
+      <div class="bdp-intel-card" style="border-color:${clr}22">
+        <div class="bdp-intel-header">
+          <div class="bdp-intel-title">Revenue Intelligence</div>
+          <div class="bdp-intel-score" style="color:${clr}">${p.weight}<span>/10</span></div>
         </div>
-        <div class="bdp-stars" style="color:${clr}">${stars}</div>
-        <div class="bdp-tier" style="color:${clr}">${tier}</div>
-        <div class="bdp-bar-track"><div class="bdp-bar-fill" style="width:${barW}%;background:${clr}"></div></div>
-        <div class="bdp-rev-desc">${getRevenueDesc(p.label, p.weight)}</div>
+        <div class="bdp-intel-stars" style="color:${clr}">${stars}</div>
+        <div class="bdp-intel-tier" style="color:${clr}">${tier}</div>
+        <div class="bdp-intel-bar">
+          <div class="bdp-intel-fill" style="width:${p.weight*10}%;background:${clr}"></div>
+        </div>
+        <div class="bdp-intel-desc">${getRevenueDesc(p.label, p.weight)}</div>
       </div>
 
-      <div class="bdp-info-grid">
-        ${p.address ? `<div class="bdp-info-row"><span class="bdp-info-icon">📍</span><div><div class="bdp-info-label">Address</div><div class="bdp-info-val">${p.address}</div></div></div>` : ''}
-        ${p.phone   ? `<div class="bdp-info-row"><span class="bdp-info-icon">📞</span><div><div class="bdp-info-label">Phone</div><div class="bdp-info-val">${p.phone}</div></div></div>` : ''}
-        ${p.hours   ? `<div class="bdp-info-row"><span class="bdp-info-icon">🕐</span><div><div class="bdp-info-label">Hours</div><div class="bdp-info-val">${p.hours}</div></div></div>` : ''}
-        <div class="bdp-info-row">
-          <span class="bdp-info-icon">📊</span>
-          <div><div class="bdp-info-label">Business Sector</div><div class="bdp-info-val">${p.group?.charAt(0).toUpperCase()+p.group?.slice(1) || 'Commercial'}</div></div>
+      <!-- MARKET CONTEXT CARD -->
+      ${zip ? `
+      <div class="bdp-context-card">
+        <div class="bdp-context-title">Market Context — ZIP ${zip}</div>
+        <div class="bdp-context-grid">
+          <div class="bdp-ctx-item">
+            <div class="bdp-ctx-val">${zipScore}</div>
+            <div class="bdp-ctx-lbl">Zone Score</div>
+          </div>
+          <div class="bdp-ctx-item">
+            <div class="bdp-ctx-val">${zipD.medianIncome ? '$'+Math.round(zipD.medianIncome/1000)+'K' : '—'}</div>
+            <div class="bdp-ctx-lbl">Median Income</div>
+          </div>
+          <div class="bdp-ctx-item">
+            <div class="bdp-ctx-val">${zipD.population ? Math.round(zipD.population/1000)+'K' : '—'}</div>
+            <div class="bdp-ctx-lbl">Population</div>
+          </div>
+          <div class="bdp-ctx-item">
+            <div class="bdp-ctx-val">${zipD.vacancyRate ? zipD.vacancyRate+'%' : '—'}</div>
+            <div class="bdp-ctx-lbl">Vacancy Rate</div>
+          </div>
         </div>
+        <div class="bdp-fit-label">Market Fit Analysis</div>
+        <div class="bdp-fit-text">${marketFit}</div>
+      </div>` : ''}
+
+      <!-- CONTACT INFORMATION -->
+      <div class="bdp-contact-card">
+        <div class="bdp-card-title">Contact & Hours</div>
+        ${p.address ? `
+        <div class="bdp-contact-row">
+          <span class="bdp-contact-icon">📍</span>
+          <div>
+            <div class="bdp-contact-label">Address</div>
+            <div class="bdp-contact-val">${p.address}</div>
+          </div>
+        </div>` : ''}
+        ${p.phone ? `
+        <div class="bdp-contact-row">
+          <span class="bdp-contact-icon">📞</span>
+          <div>
+            <div class="bdp-contact-label">Phone</div>
+            <div class="bdp-contact-val"><a href="tel:${p.phone}" style="color:var(--cyan)">${p.phone}</a></div>
+          </div>
+        </div>` : ''}
+        ${p.opening ? `
+        <div class="bdp-contact-row">
+          <span class="bdp-contact-icon">🕐</span>
+          <div>
+            <div class="bdp-contact-label">Hours</div>
+            <div class="bdp-contact-val">${p.opening}</div>
+          </div>
+        </div>` : ''}
+        ${p.website ? `
+        <div class="bdp-contact-row">
+          <span class="bdp-contact-icon">🌐</span>
+          <div>
+            <div class="bdp-contact-label">Website</div>
+            <div class="bdp-contact-val"><a href="${p.website}" target="_blank" style="color:var(--cyan)">${p.website.replace(/https?:\/\//,'').substring(0,35)}${p.website.length>40?'…':''}</a></div>
+          </div>
+        </div>` : ''}
+        ${!p.address && !p.phone && !p.opening && !p.website ? '<div style="color:var(--text-3);font-size:11px;text-align:center;padding:8px">Contact details not available in data source</div>' : ''}
       </div>
 
-      <div class="bdp-map-actions">
-        <a class="bdp-map-btn" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name + ' ' + (p.address||'Tucson AZ'))}" target="_blank">
-          🗺 Open in Google Maps
+      <!-- ACTION BUTTONS -->
+      <div class="bdp-actions">
+        <a class="bdp-action-btn bdp-action-primary"
+           href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name + (p.address ? ' ' + p.address : ' Tucson AZ'))}"
+           target="_blank">
+          <svg viewBox="0 0 16 16" fill="none" width="12" height="12"><circle cx="8" cy="7" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M8 2C5.2 2 3 4.2 3 7c0 3.5 5 9 5 9s5-5.5 5-9c0-2.8-2.2-5-5-5z" stroke="currentColor" stroke-width="1.5"/></svg>
+          Open in Google Maps
         </a>
-        <a class="bdp-map-btn bdp-map-btn-sec" href="https://www.google.com/maps/@${lat},${lng},19z" target="_blank">
-          📸 Street View
+        <a class="bdp-action-btn bdp-action-secondary"
+           href="https://www.google.com/maps/@${lat},${lng},19z"
+           target="_blank">
+          <svg viewBox="0 0 16 16" fill="none" width="12" height="12"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2 6h12M6 2v12" stroke="currentColor" stroke-width="1.5"/></svg>
+          Street View
         </a>
+        ${p.website ? `
+        <a class="bdp-action-btn bdp-action-secondary"
+           href="${p.website}" target="_blank">
+          <svg viewBox="0 0 16 16" fill="none" width="12" height="12"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2s-3 2-3 6 3 6 3 6M8 2s3 2 3 6-3 6-3 6M2 8h12" stroke="currentColor" stroke-width="1.5"/></svg>
+          Website
+        </a>` : ''}
       </div>
 
-      <div class="bdp-osm-credit">Data: OpenStreetMap contributors · Imagery: Mapbox Satellite</div>
+      <div class="bdp-data-src">${srcBadge} · Data via ${p.source === 'foursquare' ? 'Foursquare Places' : 'OpenStreetMap'}</div>
     </div>
   `;
 
@@ -934,15 +1031,38 @@ function openBizDetail(p, lat, lng) {
 }
 
 function closeBizDetail() {
-  document.getElementById('biz-detail-panel').classList.remove('open');
+  const panel = document.getElementById('biz-detail-panel');
+  if (panel) panel.classList.remove('open');
+}
+
+function getMarketFit(group, zip, d) {
+  if (!d || !zip) return 'No market data available for this zone.';
+  const income = d.medianIncome || 0;
+  const score  = calcScore(zip, 'composite');
+  const sectors = d.sectors || [];
+  const isTargetSector = sectors.some(s => s.toLowerCase().includes(group));
+
+  if (income >= 90000 && ['food','retail','wellness','hospitality'].includes(group)) {
+    return `Strong fit. ${d.name} median income of $${income.toLocaleString()} indicates substantial discretionary spending capacity for ${group} businesses. Wealth score ${score}/100 confirms premium positioning viability.`;
+  }
+  if (group === 'medical' && income >= 60000) {
+    return `Excellent fit. Medical and healthcare businesses perform consistently across income levels. ${d.name} (score: ${score}) offers a stable patient base with ${d.population?.toLocaleString() || 'significant'} residents within the zone.`;
+  }
+  if (group === 'finance' && income >= 80000) {
+    return `High fit. Financial services businesses thrive in ${d.name} given the $${income.toLocaleString()} median income. This zone shows ${score >= 70 ? 'premium' : 'solid'} wealth concentration making it viable for wealth management, banking, and advisory services.`;
+  }
+  if (group === 'auto' && income >= 55000) {
+    return `Solid fit. Auto services and dealerships have consistent demand across income levels. ${d.name} vacancy rate of ${d.vacancyRate || '?'}% and population of ${d.population?.toLocaleString() || '?'} support steady auto-related traffic.`;
+  }
+  return `${d.name} has a composite wealth score of ${score}/100 with ${d.population?.toLocaleString() || '?'} residents and median income of $${income.toLocaleString()}. Evaluate ${group} category demand against local competition density.`;
 }
 
 function getRevenueDesc(label, weight) {
-  if (weight >= 9) return `${label} operations typically generate high annual revenue, making this one of the most commercially significant business types in any zone.`;
-  if (weight >= 7) return `${label} businesses generate strong consistent revenue with broad customer bases and repeat traffic patterns.`;
-  if (weight >= 5) return `${label} operations generate solid mid-tier revenue, serving a reliable local customer base.`;
-  if (weight >= 3) return `${label} businesses serve the community with moderate revenue generation and stable foot traffic.`;
-  return `${label} operations contribute to community infrastructure with lower direct revenue impact.`;
+  if (weight >= 9) return `${label} businesses are among the highest revenue-generating categories in any commercial zone. Anchors retail corridors and drives significant foot traffic and economic activity.`;
+  if (weight >= 7) return `${label} businesses generate strong, consistent revenue with broad customer bases. Typically recession-resistant with repeat patronage patterns.`;
+  if (weight >= 5) return `${label} operations produce solid mid-tier revenue serving a reliable local customer base. Performance is closely tied to surrounding demographics and income levels.`;
+  if (weight >= 3) return `${label} businesses contribute stable community-level revenue. Success depends heavily on local foot traffic, population density, and disposable income.`;
+  return `${label} operations serve community infrastructure roles with lower direct revenue impact. Value is in supporting ecosystem and foot traffic generation for adjacent businesses.`;
 }
 
 
