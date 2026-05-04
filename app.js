@@ -58,8 +58,8 @@ async function initMap() {
   window._map = map = new mapboxgl.Map({
     container: 'map',
     style: MAP_STYLES.dark,
-    center: [-110.95, 32.26],
-    zoom: 10.8,
+    center: [-110.97, 32.21],
+    zoom: 9.8,
     minZoom: 9, maxZoom: 17,
     pitch: USE_3D ? 45 : 0,
     bearing: USE_3D ? -15 : 0,
@@ -590,7 +590,7 @@ function toast(msg){const el=document.getElementById('toast');el.textContent=msg
 // Fades out wealth heatmap → overlays live OSM business revenue heat map.
 // Hot red streets = high revenue business clusters. Empty streets = transparent.
 
-const DRILL_ZOOM = 12.5;
+const DRILL_ZOOM = 12.0;
 let drillActive = false, drillZip = null;
 const drillCache = {};       // zip → businesses (persists per session)
 let drillTimer = null, drillClicksReady = false;
@@ -1078,7 +1078,7 @@ function leaveDrill(fly=true) {
   if (map.getLayer('twi-fill'))      map.setPaintProperty('twi-fill','fill-opacity',['case',['boolean',['feature-state','hover'],false],0.88,USE_3D?0.35:0.68]);
   if (map.getLayer('twi-border'))    map.setPaintProperty('twi-border','line-opacity',0.9);
   if (map.getLayer('twi-labels'))    map.setLayoutProperty('twi-labels','visibility','visible');
-  if (fly) map.flyTo({center:[-110.95,32.26],zoom:10.8,pitch:USE_3D?45:0,bearing:USE_3D?-15:0,duration:1000});
+  if (fly) map.flyTo({center:[-110.97,32.21],zoom:9.8,pitch:USE_3D?45:0,bearing:USE_3D?-15:0,duration:1000});
 }
 
 // Global alias for HTML button onclick
@@ -1156,6 +1156,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('cmp-clear').addEventListener('click',()=>{CMP_A=CMP_B=null;updateCmpSlots();});
   document.getElementById('z-in').addEventListener('click',()=>map.zoomIn());
   document.getElementById('z-out').addEventListener('click',()=>map.zoomOut());
-  document.getElementById('z-reset').addEventListener('click',()=>map.flyTo({center:[-110.95,32.26],zoom:10.8,pitch:USE_3D?45:0,bearing:USE_3D?-15:0,duration:1000}));
+  document.getElementById('z-reset').addEventListener('click',()=>map.flyTo({center:[-110.97,32.21],zoom:9.8,pitch:USE_3D?45:0,bearing:USE_3D?-15:0,duration:1000}));
   document.getElementById('cmp-modal').addEventListener('click',e=>{if(e.target.id==='cmp-modal')closeCmp();});
 });
