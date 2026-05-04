@@ -747,7 +747,13 @@ async function enterDrill(zip) {
     const businesses = await fetchBusinesses(zip);
     drillCache[zip] = businesses;
     paintDrill(businesses);
-    if (zbEl) zbEl.textContent = zip + ' · ' + d.name + ' (' + businesses.length + ' businesses found)';
+    if (zbEl) {
+    if (businesses.length === 0) {
+      zbEl.textContent = zip + ' · ' + d.name + ' — No commercial businesses in OSM data (residential zone)';
+    } else {
+      zbEl.textContent = zip + ' · ' + d.name + ' (' + businesses.length + ' businesses found)';
+    }
+  }
   } catch(err) {
     console.error('[Drill] fetch failed:', err);
     drillCache[zip] = [];
