@@ -808,7 +808,7 @@ function paintDrill(businesses) {
       'heatmap-intensity':['interpolate',['linear'],['zoom'],
         13,1.0, 14,1.8, 15,3.0, 16,5.0, 17,7.0],
       'heatmap-radius':['interpolate',['linear'],['zoom'],
-        13,50, 14,38, 15,26, 16,16, 17,10],
+        12,30, 13,40, 14,28, 15,18, 16,12, 17,8],
       'heatmap-color':['interpolate',['linear'],['heatmap-density'],
         0,    'rgba(0,0,0,0)',
         0.03, 'rgba(4,15,55,0.50)',
@@ -827,15 +827,16 @@ function paintDrill(businesses) {
 
   // ── LAYER 2: Business dots (zoom 14+, sized by revenue) ──────────────────
   map.addLayer({
-    id:'drill-dots', type:'circle', source:'drill-src', minzoom:14,
+    id:'drill-dots', type:'circle', source:'drill-src', minzoom:12,
     paint:{
       'circle-radius':['interpolate',['linear'],['zoom'],
-        14,['interpolate',['linear'],['get','weight'],1,3, 5,5, 10,7],
-        16,['interpolate',['linear'],['get','weight'],1,5, 5,11,10,16],
-        18,['interpolate',['linear'],['get','weight'],1,8, 5,16,10,22]
+        12,['interpolate',['linear'],['get','weight'],1,4, 5,6, 10,9],
+        14,['interpolate',['linear'],['get','weight'],1,5, 5,8, 10,12],
+        16,['interpolate',['linear'],['get','weight'],1,7, 5,13,10,18],
+        18,['interpolate',['linear'],['get','weight'],1,9, 5,18,10,24]
       ],
       'circle-color':['get','color'],
-      'circle-opacity':['interpolate',['linear'],['zoom'],14,0.20,15,0.82,17,0.95],
+      'circle-opacity':['interpolate',['linear'],['zoom'],12,0.55,13,0.75,14,0.88,16,0.95],
       'circle-stroke-color':'#ffffff',
       'circle-stroke-width':['interpolate',['linear'],['zoom'],14,0.5,16,2.0],
       'circle-stroke-opacity':['interpolate',['linear'],['zoom'],14,0.1,15,0.6,17,0.9]
@@ -844,7 +845,7 @@ function paintDrill(businesses) {
 
   // ── LAYER 3: Business name labels (zoom 15.5+) ────────────────────────────
   map.addLayer({
-    id:'drill-labels', type:'symbol', source:'drill-src', minzoom:15.5,
+    id:'drill-labels', type:'symbol', source:'drill-src', minzoom:14.5,
     layout:{
       'text-field':['concat',['get','icon'],' ',['get','name']],
       'text-font':['DIN Pro Regular','Arial Unicode MS Regular'],
@@ -859,182 +860,90 @@ function paintDrill(businesses) {
 }
 
 // ── BUSINESS INTELLIGENCE PANEL ──────────────────────────────────────────────
-// Slides in from the right on business dot click
-// Shows verified name, category, contact info, photo, revenue intelligence,
-// market context, and direct action links
-
 function openBizDetail(p, lat, lng) {
-  const panel = document.getElementById('biz-detail-panel');
-  if (!panel) return;
+  // Get or create the panel
+  let panel = document.getElementById('biz-detail-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'biz-detail-panel';
+    panel.className = 'biz-detail-panel';
+    document.body.appendChild(panel);
+    console.log('[BDP] Created biz-detail-panel dynamically');
+  }
 
-  const clr   = rwColor(p.weight);
-  const stars  = rwStars(p.weight);
-  const zip   = drillZip || '';
-  const zipD  = ZIP_DATA[zip] || {};
+  const zip  = window.drillZip || drillZip || '';
+  const zipD = ZIP_DATA[zip] || {};
+  const clr  = rwColor(p.weight);
+  const stars = rwStars(p.weight);
+  const score = zip ? calcScore(zip, 'composite') : 0;
 
-  // Revenue tier
-  const tier = p.weight>=9 ? 'Ultra High Revenue Category' :
-               p.weight>=7 ? 'High Revenue Category' :
-               p.weight>=5 ? 'Mid Revenue Category' :
-               p.weight>=3 ? 'Lower Revenue Category' : 'Low Revenue Category';
+  const tier = p.weight>=9 ? 'Ultra High Revenue' :
+               p.weight>=7 ? 'High Revenue' :
+               p.weight>=5 ? 'Mid Revenue' :
+               p.weight>=3 ? 'Lower Revenue' : 'Low Revenue';
 
-  // Market context — how does this biz fit this ZIP?
-  const zipScore = zip ? calcScore(zip,'composite') : 0;
-  const marketFit = getMarketFit(p.group, zip, zipD);
-
-  // Data source badge
-  const srcBadge = p.source === 'foursquare'
-    ? '<span class="src-badge src-fsq">Foursquare Verified</span>'
-    : '<span class="src-badge src-osm">OpenStreetMap</span>';
-
-  // Photo — use Foursquare photo, or Mapbox satellite fallback
   const mapImg = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${lng},${lat},17,0/380x200?access_token=${MAPBOX_TOKEN}`;
-  const photoSrc = p.photoUrl || mapImg;
-
-  // Rating display
-  const ratingHtml = p.rating
-    ? `<div class="bdp-rating"><span class="bdp-rating-num">${(p.rating/2).toFixed(1)}</span><span class="bdp-rating-stars">${'★'.repeat(Math.round(p.rating/2))}${'☆'.repeat(5-Math.round(p.rating/2))}</span><span class="bdp-rating-src">Foursquare</span></div>`
-    : '';
-
-  // Price display
-  const priceMap = {1:'$', 2:'$$', 3:'$$$', 4:'$$$$'};
-  const priceHtml = p.price
-    ? `<span class="bdp-price">${priceMap[p.price] || ''}</span>`
-    : '';
 
   panel.innerHTML = `
     <div class="bdp-topbar">
-      <div class="bdp-back" onclick="closeBizDetail()">
-        <svg viewBox="0 0 16 16" fill="none" width="12" height="12"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Back to ${zip} Businesses
-      </div>
-      ${srcBadge}
+      <div class="bdp-back" onclick="closeBizDetail()">← Back to ${zip || 'businesses'}</div>
+      <span class="src-badge src-osm">${p.source === 'foursquare' ? 'Foursquare' : 'OpenStreetMap'}</span>
     </div>
 
     <div class="bdp-photo-wrap">
-      <img class="bdp-photo" src="${photoSrc}"
-           onerror="this.src='${mapImg}'"
-           alt="${p.name}">
+      <img class="bdp-photo" src="${mapImg}" alt="${p.name}">
       <div class="bdp-photo-overlay">
         <span class="bdp-photo-type">${p.icon} ${p.label}</span>
-        ${priceHtml}
       </div>
     </div>
 
     <div class="bdp-content">
-
       <div class="bdp-name-block">
         <div class="bdp-biz-name">${p.name}</div>
-        <div class="bdp-biz-sub">${p.label} · ${zip ? zip + ' ' + (zipD.name||'') : ''}</div>
-        ${ratingHtml}
-        ${p.description ? `<div class="bdp-description">${p.description}</div>` : ''}
+        <div class="bdp-biz-sub">${p.label}${zip ? ' · ' + zip + ' ' + (zipD.name||'') : ''}</div>
       </div>
 
-      <!-- REVENUE INTELLIGENCE CARD -->
-      <div class="bdp-intel-card" style="border-color:${clr}22">
-        <div class="bdp-intel-header">
-          <div class="bdp-intel-title">Revenue Intelligence</div>
-          <div class="bdp-intel-score" style="color:${clr}">${p.weight}<span>/10</span></div>
+      <div class="bdp-intel-card" style="border-color:${clr}33;margin:12px 16px;padding:12px 14px;background:var(--bg-3);border:1px solid;border-radius:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-family:var(--font-mono);font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--text-3)">Revenue Intelligence</span>
+          <span style="font-family:var(--font-display);font-size:24px;color:${clr}">${p.weight}<span style="font-size:14px;color:var(--text-3)">/10</span></span>
         </div>
-        <div class="bdp-intel-stars" style="color:${clr}">${stars}</div>
-        <div class="bdp-intel-tier" style="color:${clr}">${tier}</div>
-        <div class="bdp-intel-bar">
-          <div class="bdp-intel-fill" style="width:${p.weight*10}%;background:${clr}"></div>
+        <div style="color:${clr};font-size:14px;letter-spacing:2px;margin-bottom:2px">${stars}</div>
+        <div style="font-size:11px;font-weight:600;color:${clr};margin-bottom:8px">${tier} Category</div>
+        <div style="height:3px;background:var(--bg-4);border-radius:2px;margin-bottom:8px;overflow:hidden">
+          <div style="height:100%;width:${p.weight*10}%;background:${clr};border-radius:2px"></div>
         </div>
-        <div class="bdp-intel-desc">${getRevenueDesc(p.label, p.weight)}</div>
+        ${zip ? `
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px;">
+          <div style="text-align:center"><div style="font-family:var(--font-display);font-size:14px;color:var(--text-1)">${score}</div><div style="font-size:8px;color:var(--text-3)">Zone Score</div></div>
+          <div style="text-align:center"><div style="font-family:var(--font-display);font-size:14px;color:var(--text-1)">${zipD.medianIncome ? '$'+Math.round(zipD.medianIncome/1000)+'K' : '—'}</div><div style="font-size:8px;color:var(--text-3)">Med. Income</div></div>
+          <div style="text-align:center"><div style="font-family:var(--font-display);font-size:14px;color:var(--text-1)">${zipD.population ? Math.round(zipD.population/1000)+'K' : '—'}</div><div style="font-size:8px;color:var(--text-3)">Population</div></div>
+        </div>` : ''}
       </div>
 
-      <!-- MARKET CONTEXT CARD -->
-      ${zip ? `
-      <div class="bdp-context-card">
-        <div class="bdp-context-title">Market Context — ZIP ${zip}</div>
-        <div class="bdp-context-grid">
-          <div class="bdp-ctx-item">
-            <div class="bdp-ctx-val">${zipScore}</div>
-            <div class="bdp-ctx-lbl">Zone Score</div>
-          </div>
-          <div class="bdp-ctx-item">
-            <div class="bdp-ctx-val">${zipD.medianIncome ? '$'+Math.round(zipD.medianIncome/1000)+'K' : '—'}</div>
-            <div class="bdp-ctx-lbl">Median Income</div>
-          </div>
-          <div class="bdp-ctx-item">
-            <div class="bdp-ctx-val">${zipD.population ? Math.round(zipD.population/1000)+'K' : '—'}</div>
-            <div class="bdp-ctx-lbl">Population</div>
-          </div>
-          <div class="bdp-ctx-item">
-            <div class="bdp-ctx-val">${zipD.vacancyRate ? zipD.vacancyRate+'%' : '—'}</div>
-            <div class="bdp-ctx-lbl">Vacancy Rate</div>
-          </div>
-        </div>
-        <div class="bdp-fit-label">Market Fit Analysis</div>
-        <div class="bdp-fit-text">${marketFit}</div>
-      </div>` : ''}
-
-      <!-- CONTACT INFORMATION -->
-      <div class="bdp-contact-card">
-        <div class="bdp-card-title">Contact & Hours</div>
-        ${p.address ? `
-        <div class="bdp-contact-row">
-          <span class="bdp-contact-icon">📍</span>
-          <div>
-            <div class="bdp-contact-label">Address</div>
-            <div class="bdp-contact-val">${p.address}</div>
-          </div>
-        </div>` : ''}
-        ${p.phone ? `
-        <div class="bdp-contact-row">
-          <span class="bdp-contact-icon">📞</span>
-          <div>
-            <div class="bdp-contact-label">Phone</div>
-            <div class="bdp-contact-val"><a href="tel:${p.phone}" style="color:var(--cyan)">${p.phone}</a></div>
-          </div>
-        </div>` : ''}
-        ${p.opening ? `
-        <div class="bdp-contact-row">
-          <span class="bdp-contact-icon">🕐</span>
-          <div>
-            <div class="bdp-contact-label">Hours</div>
-            <div class="bdp-contact-val">${p.opening}</div>
-          </div>
-        </div>` : ''}
-        ${p.website ? `
-        <div class="bdp-contact-row">
-          <span class="bdp-contact-icon">🌐</span>
-          <div>
-            <div class="bdp-contact-label">Website</div>
-            <div class="bdp-contact-val"><a href="${p.website}" target="_blank" style="color:var(--cyan)">${p.website.replace(/https?:\/\//,'').substring(0,35)}${p.website.length>40?'…':''}</a></div>
-          </div>
-        </div>` : ''}
-        ${!p.address && !p.phone && !p.opening && !p.website ? '<div style="color:var(--text-3);font-size:11px;text-align:center;padding:8px">Contact details not available in data source</div>' : ''}
+      <div style="margin:0 16px 12px;padding:12px 14px;background:var(--bg-3);border:1px solid var(--line);border-radius:8px;">
+        <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--text-3);margin-bottom:10px">Contact & Location</div>
+        ${p.address ? `<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)"><span>📍</span><div><div style="font-size:8px;color:var(--text-3);margin-bottom:2px">ADDRESS</div><div style="font-size:11px;color:var(--text-1)">${p.address}</div></div></div>` : ''}
+        ${p.phone   ? `<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)"><span>📞</span><div><div style="font-size:8px;color:var(--text-3);margin-bottom:2px">PHONE</div><div style="font-size:11px;color:var(--text-1)"><a href="tel:${p.phone}" style="color:var(--cyan)">${p.phone}</a></div></div></div>` : ''}
+        ${p.hours   ? `<div style="display:flex;gap:10px;padding:6px 0"><span>🕐</span><div><div style="font-size:8px;color:var(--text-3);margin-bottom:2px">HOURS</div><div style="font-size:11px;color:var(--text-1)">${p.hours}</div></div></div>` : ''}
+        ${!p.address && !p.phone && !p.hours ? '<div style="font-size:11px;color:var(--text-3);text-align:center;padding:8px">Contact info not available</div>' : ''}
       </div>
 
-      <!-- ACTION BUTTONS -->
-      <div class="bdp-actions">
-        <a class="bdp-action-btn bdp-action-primary"
-           href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name + (p.address ? ' ' + p.address : ' Tucson AZ'))}"
-           target="_blank">
-          <svg viewBox="0 0 16 16" fill="none" width="12" height="12"><circle cx="8" cy="7" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M8 2C5.2 2 3 4.2 3 7c0 3.5 5 9 5 9s5-5.5 5-9c0-2.8-2.2-5-5-5z" stroke="currentColor" stroke-width="1.5"/></svg>
-          Open in Google Maps
+      <div style="padding:0 16px 12px;display:flex;flex-direction:column;gap:6px;">
+        <a style="display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 14px;border-radius:6px;text-decoration:none;font-family:var(--font-mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;background:var(--cyan-dim);border:1px solid rgba(0,200,240,0.35);color:var(--cyan)"
+           href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name + (p.address ? ' ' + p.address : ' Tucson AZ'))}" target="_blank">
+          🗺 Open in Google Maps
         </a>
-        <a class="bdp-action-btn bdp-action-secondary"
-           href="https://www.google.com/maps/@${lat},${lng},19z"
-           target="_blank">
-          <svg viewBox="0 0 16 16" fill="none" width="12" height="12"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2 6h12M6 2v12" stroke="currentColor" stroke-width="1.5"/></svg>
-          Street View
+        <a style="display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 14px;border-radius:6px;text-decoration:none;font-family:var(--font-mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;background:var(--bg-3);border:1px solid var(--line-2);color:var(--text-2)"
+           href="https://www.google.com/maps/@${lat},${lng},19z" target="_blank">
+          📸 Street View
         </a>
-        ${p.website ? `
-        <a class="bdp-action-btn bdp-action-secondary"
-           href="${p.website}" target="_blank">
-          <svg viewBox="0 0 16 16" fill="none" width="12" height="12"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2s-3 2-3 6 3 6 3 6M8 2s3 2 3 6-3 6-3 6M2 8h12" stroke="currentColor" stroke-width="1.5"/></svg>
-          Website
-        </a>` : ''}
       </div>
-
-      <div class="bdp-data-src">${srcBadge} · Data via ${p.source === 'foursquare' ? 'Foursquare Places' : 'OpenStreetMap'}</div>
     </div>
   `;
 
   panel.classList.add('open');
+  console.log('[BDP] Panel opened for', p.name);
 }
 
 function closeBizDetail() {
