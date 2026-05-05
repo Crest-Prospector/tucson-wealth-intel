@@ -1048,3 +1048,144 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   width: 360px !important;
   z-index: 302 !important;
 }
+
+
+/* ── GLOBAL POLISH ─────────────────────────────────────────────────────────── */
+
+/* Smoother panel transitions */
+.biz-detail-panel {
+  transition: transform 0.28s cubic-bezier(0.16,1,0.3,1) !important;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+
+/* Cleaner topbar */
+.bdp-topbar {
+  background: linear-gradient(180deg, var(--bg-3) 0%, var(--bg-2) 100%) !important;
+  padding: 12px 16px !important;
+  border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+}
+
+.bdp-back {
+  font-size: 10px !important;
+  letter-spacing: 1.2px !important;
+  gap: 8px !important;
+}
+.bdp-back:hover { color: var(--cyan) !important; }
+
+/* Photo quality */
+.bdp-photo {
+  transition: transform 0.5s ease !important;
+}
+.bdp-photo-wrap:hover .bdp-photo {
+  transform: scale(1.03) !important;
+}
+.bdp-photo-overlay {
+  background: linear-gradient(0deg, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.3) 60%, transparent 100%) !important;
+  padding: 12px 14px 10px !important;
+}
+
+/* Business name refinement */  
+.bdp-biz-name {
+  font-size: 20px !important;
+  letter-spacing: 0.5px !important;
+  line-height: 1.15 !important;
+}
+.bdp-biz-sub {
+  color: var(--text-3) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.5px !important;
+  margin-top: 3px !important;
+}
+
+/* Source badge cleaner */
+.src-badge {
+  font-size: 7.5px !important;
+  padding: 2px 7px !important;
+  letter-spacing: 1px !important;
+}
+.src-osm {
+  background: rgba(0,200,240,0.08) !important;
+  color: rgba(0,200,240,0.7) !important;
+  border-color: rgba(0,200,240,0.15) !important;
+}
+
+/* Cleaner action buttons */
+.bdp-action-btn {
+  padding: 10px 14px !important;
+  font-size: 9.5px !important;
+  letter-spacing: 1.2px !important;
+  border-radius: 7px !important;
+  gap: 8px !important;
+  transition: all 0.18s ease !important;
+}
+.bdp-action-primary {
+  background: rgba(0,200,240,0.1) !important;
+}
+.bdp-action-primary:hover {
+  background: rgba(0,200,240,0.22) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 12px rgba(0,200,240,0.15) !important;
+}
+.bdp-action-secondary:hover {
+  background: rgba(255,255,255,0.05) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Zoom badge cleaner */
+#zoom-mode-badge {
+  background: linear-gradient(135deg, rgba(8,11,16,0.97) 0%, rgba(12,16,24,0.97) 100%) !important;
+  border: 1px solid rgba(0,200,240,0.2) !important;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) !important;
+}
+
+/* Hover popup refinement */
+.hover-popup .mapboxgl-popup-content {
+  background: rgba(6,9,14,0.98) !important;
+  border: 1px solid rgba(255,255,255,0.1) !important;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.04) !important;
+  border-radius: 10px !important;
+  padding: 12px 14px !important;
+}
+.hp-name {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+}
+.hp-hint {
+  color: rgba(0,200,240,0.5) !important;
+  font-size: 8px !important;
+  letter-spacing: 0.8px !important;
+}
+
+/* Left panel ZIP rows cleaner */
+.zip-row {
+  transition: background 0.15s ease, border-color 0.15s ease !important;
+}
+.zip-row:hover {
+  border-left-width: 3px !important;
+}
+
+/* Sidebar scrollbar */
+#zip-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+/* Top KPI bar subtle gradient */
+#topbar {
+  background: linear-gradient(180deg, rgba(12,16,24,0.98) 0%, rgba(8,11,16,0.95) 100%) !important;
+}
+
+/* Mode buttons hover */
+.ltab {
+  transition: all 0.15s ease !important;
+}
+.ltab:hover:not(.active) {
+  background: rgba(255,255,255,0.05) !important;
+}
+
+/* Composite legend cleaner */
+#legend-wrap {
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255,255,255,0.06) !important;
+}
